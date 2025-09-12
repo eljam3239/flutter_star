@@ -1,0 +1,82 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# StarXpand SDK and iOS-specific ignores
+# StarIO10 Framework - large binary, should be downloaded separately
+**/StarIO10.xcframework/
+**/Frameworks/StarIO10.xcframework/
+
+# CocoaPods
+**/Pods/
+**/Podfile.lock
+**/.symlinks/
+**/ios/.symlinks/
+**/macos/.symlinks/
+
+# iOS/macOS build artifacts
+**/ios/Runner.xcworkspace/xcuserdata/
+**/ios/Runner.xcodeproj/xcuserdata/
+**/ios/Runner.xcodeproj/project.xcworkspace/xcuserdata/
+**/macos/Runner.xcworkspace/xcuserdata/
+**/macos/Runner.xcodeproj/xcuserdata/
+**/macos/Runner.xcodeproj/project.xcworkspace/xcuserdata/
+
+# iOS signing and provisioning
+**/ios/Runner/GoogleService-Info.plist
+**/ios/export_options.plist
+**/ios/Runner.xcarchive/
+
+# Plugin lockfiles (can be regenerated)
+**/packages/**/pubspec.lock
+
+# VS Code settings (optional - uncomment if you want to ignore)
+# .vscode/settings.json
+# .vscode/launch.json
+
+# Development certificates and keys
+*.p12
+*.mobileprovision
+*.certSigningRequest

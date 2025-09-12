@@ -1,0 +1,26 @@
+name: star_printer_android
+description: Android implementation of the star_printer plugin.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.0.0"
+
+flutter:
+  plugin:
+    implements: star_printer
+    platforms:
+      android:
+        package: com.example.star_printer_android
+        pluginClass: StarPrinterPlugin
+
+dependencies:
+  flutter:
+    sdk: flutter
+  star_printer_platform_interface:
+    path: ../star_printer_platform_interface
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

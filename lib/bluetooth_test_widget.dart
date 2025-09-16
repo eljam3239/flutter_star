@@ -141,31 +141,29 @@ class _BluetoothTestWidgetState extends State<BluetoothTestWidget> {
       print('DEBUG: Creating Bluetooth print job...');
       final printJob = PrintJob(
         content: '''
-      ╔═══════════════════════╗
-      ║    BLUETOOTH TEST     ║
-      ╚═══════════════════════╝
-      
-           📱 ↔️ 🖨️
-      
-      Bluetooth Connection Active!
-      
-      Device Info:
-      • Interface: Bluetooth
-      • Printer: ${_selectedBluetoothPrinter?.split(':').last ?? 'Unknown'}
-      • Status: Connected
-      
-      Test Pattern:
-      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-      ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-      
-      Bluetooth Print Success!
-      
+           .--._.--.
+          ( O     O )
+          /   . .   \\
+         .\`._______.\'.\`
+        /(           )\\
+      _/  \\  \\   /  /  \\_
+   .~   \`  \\  \\ /  /  \'   ~.
+  {    -.   \\  V  /   .-    }
+_ _\`.    \\  |  |  |  /    .\'\_ _
+>_       _} |  |  | {_       _<
+ /. - ~ ,_-\'  .^.  \`-_, ~ - .\\
+         \'-\'|/   \\|\`-\`
+
+Hello Star Printer!
+
+Print Test
+
 ''',
       );
       
       print('DEBUG: Sending Bluetooth print job to printer...');
       await StarPrinter.printReceipt(printJob);
+      
       
       print('DEBUG: Bluetooth print job completed successfully');
       ScaffoldMessenger.of(context).showSnackBar(

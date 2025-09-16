@@ -194,6 +194,7 @@ Print Test
       print('DEBUG: Sending print job to printer...');
       await StarPrinter.printReceipt(printJob);
       
+      
       print('DEBUG: Print job completed successfully');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Print job sent successfully')),

@@ -1,4 +1,15 @@
-Star MIcronics TSP100 and TSP100sk printing from Flutter over LAN and Bluetooth.
+Star Micronics StarXpand wrapper for Flutter. 
+
+Supported:
+
+| Device      | TSP100 | TSP100sk | mPop |
+|-------------|--------|----------|------|
+| iOS         |   LAN     | LAN, Bluetooth         | Bluetooth     |
+| Android     |        |          |      |
+
+TODO: 
+1. mPop cash drawer opening for iOS/Android
+2. Android 
 
 ## Setup Instructions
 1. Download StarXpand SDK for iOS from Star Micronics

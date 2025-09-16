@@ -13,14 +13,7 @@ flutter:
     platforms:
       ios:
         pluginClass: StarPrinterPlugin
-        dartPluginClass: StarPrinterIOS
 
 dependencies:
   flutter:
-    sdk: flutter
-  star_printer_platform_interface:
-    path: ../star_printer_platform_interface
-
-dev_dependencies:
-  flutter_test:
     sdk: flutter

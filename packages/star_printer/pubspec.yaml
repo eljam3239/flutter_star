@@ -12,10 +12,6 @@ dependencies:
     sdk: flutter
   star_printer_platform_interface:
     path: ../star_printer_platform_interface
-  star_printer_android:
-    path: ../star_printer_android
-  star_printer_ios:
-    path: ../star_printer_ios
 
 dev_dependencies:
   flutter_test:

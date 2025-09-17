@@ -5,7 +5,9 @@ Supported:
 | Device      | TSP100 | TSP100sk | mPop |
 |-------------|--------|----------|------|
 | iOS         |   LAN     | LAN, Bluetooth         | Bluetooth     |
-| Android     |        |          |      |
+| Android     |  LAN      |  LAN, Bluetooth        |  Bluetooth    |
+
+iOS and Android implementations currently support the opening of a cash drawer connected to the TSP100 when a print job done over LAN.
 
 TODO: 
 1. mPop cash drawer opening for iOS/Android

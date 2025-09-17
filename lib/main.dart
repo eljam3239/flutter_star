@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:star_printer/star_printer.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'bluetooth_test_widget.dart';
 
 void main() {
@@ -63,6 +64,49 @@ class _MyHomePageState extends State<MyHomePage> {
   String? _selectedPrinter; // Add selected printer tracking
   bool _openDrawerAfterPrint = true; // Option to auto-open drawer after printing
 
+  @override
+  void initState() {
+    super.initState();
+    _checkAndRequestPermissions();
+  }
+
+  Future<void> _checkAndRequestPermissions() async {
+    // Check if we need to request Bluetooth permissions
+    final bluetoothStatus = await Permission.bluetoothConnect.status;
+    final bluetoothScanStatus = await Permission.bluetoothScan.status;
+    
+    if (!bluetoothStatus.isGranted || !bluetoothScanStatus.isGranted) {
+      print('DEBUG: Bluetooth permissions not granted, requesting...');
+      
+      // Request permissions
+      final results = await [
+        Permission.bluetoothConnect,
+        Permission.bluetoothScan,
+        Permission.location, // Also needed for Bluetooth discovery on some devices
+      ].request();
+      
+      results.forEach((permission, status) {
+        print('DEBUG: Permission $permission: $status');
+      });
+      
+      if (results[Permission.bluetoothConnect]?.isGranted == true) {
+        print('DEBUG: Bluetooth permissions granted');
+      } else {
+        print('DEBUG: Bluetooth permissions still denied');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Bluetooth permissions are required for printer discovery. Please enable them in settings.'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } else {
+      print('DEBUG: Bluetooth permissions already granted');
+    }
+  }
+
   void _incrementCounter() {
     setState(() {
       _counter++;
@@ -72,6 +116,34 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _discoverPrinters() async {
     try {
       print('DEBUG: Starting printer discovery...');
+      
+      // Check permissions first
+      final bluetoothConnectStatus = await Permission.bluetoothConnect.status;
+      final bluetoothScanStatus = await Permission.bluetoothScan.status;
+      
+      if (!bluetoothConnectStatus.isGranted || !bluetoothScanStatus.isGranted) {
+        print('DEBUG: Bluetooth permissions not granted, requesting again...');
+        await _checkAndRequestPermissions();
+        
+        // Check again after request
+        final newBluetoothConnectStatus = await Permission.bluetoothConnect.status;
+        if (!newBluetoothConnectStatus.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Bluetooth permissions required. Please enable in Android Settings > Apps > test_star > Permissions'),
+                action: SnackBarAction(
+                  label: 'Open Settings',
+                  onPressed: () => openAppSettings(),
+                ),
+                duration: const Duration(seconds: 8),
+              ),
+            );
+          }
+          return;
+        }
+      }
+      
       final printers = await StarPrinter.discoverPrinters();
       print('DEBUG: Discovery result: $printers');
       setState(() {
@@ -86,8 +158,16 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     } catch (e) {
       print('DEBUG: Discovery error: $e');
+      String message = 'Discovery failed: $e';
+      
+      if (e.toString().contains('BLUETOOTH_PERMISSION_DENIED')) {
+        message = 'Bluetooth permissions required. Please grant permissions and try again.';
+      } else if (e.toString().contains('BLUETOOTH_UNAVAILABLE')) {
+        message = 'Bluetooth is not available or disabled. Please enable Bluetooth.';
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Discovery failed: $e')),
+        SnackBar(content: Text(message)),
       );
     }
   }
@@ -394,6 +474,10 @@ Print Test
                       spacing: 8,
                       runSpacing: 8,
                       children: [
+                        ElevatedButton(
+                          onPressed: _checkAndRequestPermissions,
+                          child: const Text('Check Permissions'),
+                        ),
                         ElevatedButton(
                           onPressed: _discoverPrinters,
                           child: const Text('Discover Printers'),

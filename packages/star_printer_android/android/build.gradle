@@ -25,6 +25,7 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
+    namespace 'com.example.star_printer_android'
     compileSdkVersion 34
 
     compileOptions {
@@ -42,13 +43,16 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 21
+        minSdkVersion 29  // StarIO10 requires minimum API 29
     }
 
     dependencies {
-        // Add StarXpand Android SDK dependency
-        // Uncomment and configure when you have the StarXpand Android SDK
-        // implementation 'com.starmicronics:star-io-10:1.0.0'
+        // StarXpand Android SDK - StarIO10
+        implementation 'com.starmicronics:stario10:1.11.0'
+        
+        // Kotlin coroutines for async operations
+        implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4'
+        implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4'
     }
 
     testOptions {

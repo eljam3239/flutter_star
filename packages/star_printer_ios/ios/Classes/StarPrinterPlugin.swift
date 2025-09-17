@@ -507,7 +507,11 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 let builder = StarXpandCommand.StarXpandCommandBuilder()
                 _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
                     .addDrawer(StarXpandCommand.DrawerBuilder()
-                        .actionOpen(StarXpandCommand.Drawer.OpenParameter())
+                        .actionOpen(StarXpandCommand.Drawer.OpenParameter()
+                            .setChannel(.no1)  // Use channel 1 (standard for most cash drawers)
+                            .setOnTime(.millisecond100)  // Pulse on time: 100ms
+                            .setOffTime(.millisecond200) // Pulse off time: 200ms
+                        )
                     )
                 )
                 

@@ -14,6 +14,7 @@ class _BluetoothTestWidgetState extends State<BluetoothTestWidget> {
   String _bluetoothPrinterStatus = 'Unknown';
   String? _selectedBluetoothPrinter;
   bool _isDiscovering = false;
+  bool _openDrawerAfterPrint = true;
 
   Future<void> _discoverBluetoothPrinters() async {
     setState(() {
@@ -164,7 +165,17 @@ Print Test
       print('DEBUG: Sending Bluetooth print job to printer...');
       await StarPrinter.printReceipt(printJob);
       
-      
+      // Optionally open cash drawer after successful print
+      if (_openDrawerAfterPrint && _isBluetoothConnected) {
+        try {
+          print('DEBUG: Auto-opening cash drawer after print...');
+          await StarPrinter.openCashDrawer();
+          print('DEBUG: Auto cash drawer opened successfully');
+        } catch (drawerError) {
+          print('DEBUG: Auto cash drawer failed: $drawerError');
+          // Don't fail the whole operation if drawer fails
+        }
+      }
       print('DEBUG: Bluetooth print job completed successfully');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bluetooth print job sent successfully')),
@@ -188,6 +199,29 @@ Print Test
       setState(() {
         _bluetoothPrinterStatus = 'Error: $e';
       });
+    }
+  }
+
+  Future<void> _openCashDrawer() async {
+    if (!_isBluetoothConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please connect to a printer first')),
+      );
+      return;
+    }
+
+    try {
+      print('DEBUG: Opening cash drawer...');
+      await StarPrinter.openCashDrawer();
+      print('DEBUG: Cash drawer command sent successfully');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cash drawer opened')),
+      );
+    } catch (e) {
+      print('DEBUG: Cash drawer error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cash drawer failed: $e')),
+      );
     }
   }
 
@@ -269,6 +303,21 @@ Print Test
             const SizedBox(height: 8),
             Text('Bluetooth Printer Status: $_bluetoothPrinterStatus'),
             const SizedBox(height: 16),
+            Row(
+                      children: [
+                        Checkbox(
+                          value: _openDrawerAfterPrint,
+                          onChanged: (bool? value) {
+                            setState(() {
+                              _openDrawerAfterPrint = value ?? true;
+                            });
+                          },
+                        ),
+                        const Expanded(
+                          child: Text('Auto-open cash drawer after printing'),
+                        ),
+                      ],
+                    ),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -299,6 +348,10 @@ Print Test
                   onPressed: _getBluetoothStatus,
                   icon: const Icon(Icons.info),
                   label: const Text('Get Status'),
+                ),
+                ElevatedButton(
+                  onPressed: _isBluetoothConnected ? _openCashDrawer : null,
+                  child: const Text('Open Cash Drawer'),
                 ),
               ],
             ),

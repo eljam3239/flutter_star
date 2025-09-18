@@ -13,7 +13,8 @@ Supported:
 TSP100iv wired to cash drawer can open cash drawer upon completion of print jobs over LAN. 
 
 TODO: 
-1. Figure out usb printing.
+1. iOS/Android wired connection to mPop10 via usb-B
+2. Android wired connection to TSP100iv via usb-A. The TSP100iv manual says nothing of iPad to printer connection via usb-c, but I will try it anyways.
 
 ## Setup Instructions
 iOS: 

@@ -8,15 +8,15 @@ Supported:
 | Device      | TSP100 | TSP100sk | mPop |
 |-------------|--------|----------|------|
 | iOS         |   LAN     | LAN, Bluetooth         | Bluetooth     |
-| Android     |  LAN      |  LAN, Bluetooth        |  Bluetooth    |
+| Android     |  LAN      |  LAN, Bluetooth, usb-a        |  Bluetooth , usb-b   |
 
-TSP100iv wired to cash drawer can open cash drawer upon completion of print jobs over LAN. 
+TSP100iv wired to cash drawer can open cash drawer upon completion of print jobs over LAN. Same with builtin mPop cash drawer.
+
+Set the auto-connect to off in a bluetooth printer's bluetooth settings in the quick start app if you want to connect a tablet to that printer over usb. Otherwise wired can't be connected. Switch the printer off and turn back on if plugging a usb into the printer doesn't work after it was previously connected via bluetooth.
 
 TODO: 
-1. iOS/Android wired connection to mPop10 via usb-B - Done, in isolation.
-2. Android wired connection to TSP100iv via usb-A. The TSP100iv manual says nothing of iPad to printer connection via usb-c, but I will try it anyways. - Done, in isolation
-
-3. The above 2 are currenttly 'Done' when the tablet is connected to a printer over usb-a or usb-b. Now to ensure that plays nice with any existing LAN or Bluetooth connections. Also, to rebuild ios side and test wired on there (nothing juicy in the SDK though).
+1. Test usb ios implementation once I have a device that supports it.
+2. 
 
 ## Setup Instructions
 iOS: 

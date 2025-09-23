@@ -12,11 +12,15 @@ Supported:
 
 TSP100iv wired to cash drawer can open cash drawer upon completion of print jobs over LAN. Same with builtin mPop cash drawer.
 
-Set the auto-connect to off in a bluetooth printer's bluetooth settings in the quick start app if you want to connect a tablet to that printer over usb. Otherwise wired can't be connected. Switch the printer off and turn back on if plugging a usb into the printer doesn't work after it was previously connected via bluetooth.
+Set the auto-connect to off in a bluetooth printer's bluetooth settings in the quick start app if you want to connect a tablet to that printer over usb. Otherwise wired can't be connected. 
+
+Switch the printer off and turn back on if plugging a usb into the printer doesn't work after it was previously connected via bluetooth.
+
+Same goes for using bluetooth after it was used for wired: unplug the wired device, power the printer off and on again, then you'll be able to connect via Bluetooth. The tsp100ivsk could print over Bluetooth and usb without a power cycle when connected to the android tablet. 
+
 
 TODO: 
 1. Test usb ios implementation once I have a device that supports it.
-2. 
 
 ## Setup Instructions
 iOS: 

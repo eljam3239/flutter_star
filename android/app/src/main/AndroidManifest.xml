@@ -18,6 +18,9 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     
+    <!-- USB permissions for direct USB communication -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    
     <!-- Declare Bluetooth feature -->
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:star_printer/star_printer.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'bluetooth_test_widget.dart';
+import 'wired_test_widget.dart';
 
 void main() {
   runApp(const MyApp());
@@ -116,6 +117,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _discoverPrinters() async {
     try {
       print('DEBUG: Starting printer discovery...');
+      print('DEBUG: Looking for printers on network. TSP100 should be at 10.20.30.125');
       
       // Check permissions first
       final bluetoothConnectStatus = await Permission.bluetoothConnect.status;
@@ -210,11 +212,17 @@ class _MyHomePageState extends State<MyHomePage> {
         // Extract just the identifier part (MAC address or IP), ignore model info
         final parts = printerString.substring(4).split(':');
         identifier = parts[0]; // Take first part before any model info
-      } else if (printerString.startsWith('BT:') || printerString.startsWith('BLE:')) {
+      } else if (printerString.startsWith('BT:')) {
         interfaceType = StarInterfaceType.bluetooth;
-        final parts = printerString.startsWith('BT:') 
-            ? printerString.substring(3).split(':')
-            : printerString.substring(4).split(':');
+        final parts = printerString.substring(3).split(':');
+        identifier = parts[0]; // Take first part before any model info
+      } else if (printerString.startsWith('BLE:')) {
+        interfaceType = StarInterfaceType.bluetoothLE;
+        final parts = printerString.substring(4).split(':');
+        identifier = parts[0]; // Take first part before any model info
+      } else if (printerString.startsWith('USB:')) {
+        interfaceType = StarInterfaceType.usb;
+        final parts = printerString.substring(4).split(':');
         identifier = parts[0]; // Take first part before any model info
       } else {
         interfaceType = StarInterfaceType.lan;
@@ -359,6 +367,55 @@ Print Test
     }
   }
 
+  Future<void> _testDirectConnection() async {
+    try {
+      print('DEBUG: Testing direct connection to TSP100 at 10.20.30.125...');
+      
+      // Disconnect from current printer if connected
+      if (_isConnected) {
+        await StarPrinter.disconnect();
+        setState(() {
+          _isConnected = false;
+        });
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      
+      final settings = StarConnectionSettings(
+        interfaceType: StarInterfaceType.lan,
+        identifier: '10.20.30.125',
+      );
+      
+      await StarPrinter.connect(settings);
+      setState(() {
+        _isConnected = true;
+        // Add to discovered printers list if not already there
+        final directPrinter = 'LAN:10.20.30.125:TSP100';
+        if (!_discoveredPrinters.contains(directPrinter)) {
+          _discoveredPrinters.add(directPrinter);
+          _selectedPrinter = directPrinter;
+        }
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Direct connection to TSP100 successful!')),
+      );
+    } catch (e) {
+      print('DEBUG: Direct connection failed: $e');
+      setState(() {
+        _isConnected = false;
+      });
+      
+      String message = 'Direct connection failed: $e';
+      if (e.toString().contains('network') || e.toString().contains('timeout')) {
+        message = 'Network error: Cannot reach TSP100 at 10.20.30.125. Check if tablet and printer are on same network.';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -483,6 +540,10 @@ Print Test
                           child: const Text('Discover Printers'),
                         ),
                         ElevatedButton(
+                          onPressed: _testDirectConnection,
+                          child: const Text('Test TSP100 Direct'),
+                        ),
+                        ElevatedButton(
                           onPressed: _selectedPrinter != null && !_isConnected
                               ? _connectToPrinter
                               : null,
@@ -512,6 +573,8 @@ Print Test
             ),
             const SizedBox(height: 16),
             const BluetoothTestWidget(),
+            const SizedBox(height: 16),
+            const WiredTestWidget(),
           ],
         ),
       ),

@@ -31,6 +31,11 @@ abstract class StarPrinterPlatform extends PlatformInterface {
     throw UnimplementedError('discoverBluetoothPrinters() has not been implemented.');
   }
 
+  /// Runs USB system diagnostics
+  Future<Map<String, dynamic>> usbDiagnostics() {
+    throw UnimplementedError('usbDiagnostics() has not been implemented.');
+  }
+
   /// Connects to a Star printer
   Future<void> connect(StarConnectionSettings settings) {
     throw UnimplementedError('connect() has not been implemented.');

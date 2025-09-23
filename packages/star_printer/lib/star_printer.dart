@@ -19,6 +19,11 @@ class StarPrinter {
     return _platform.discoverBluetoothPrinters();
   }
 
+  /// Runs USB system diagnostics for troubleshooting
+  static Future<Map<String, dynamic>> usbDiagnostics() {
+    return _platform.usbDiagnostics();
+  }
+
   /// Connects to a Star printer using the provided settings
   static Future<void> connect(StarConnectionSettings settings) {
     return _platform.connect(settings);

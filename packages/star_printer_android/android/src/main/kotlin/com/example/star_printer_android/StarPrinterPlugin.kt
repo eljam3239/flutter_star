@@ -13,6 +13,8 @@ import com.starmicronics.stario10.starxpandcommand.*
 import com.starmicronics.stario10.starxpandcommand.printer.*
 import com.starmicronics.stario10.starxpandcommand.drawer.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.CompletableDeferred
+import android.hardware.usb.UsbManager
 import android.content.Context
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
@@ -39,6 +41,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     when (call.method) {
       "discoverPrinters" -> discoverPrinters(result)
       "discoverBluetoothPrinters" -> discoverBluetoothPrinters(result)
+      "usbDiagnostics" -> runUsbDiagnostics(result)
       "connect" -> connectToPrinter(call, result)
       "disconnect" -> disconnectFromPrinter(result)
       "printReceipt" -> printReceipt(call, result)
@@ -57,6 +60,28 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   private fun discoverPrinters(result: Result) {
     CoroutineScope(Dispatchers.IO).launch {
       try {
+        // Check USB OTG support and connected devices first
+        val usbManager = context.getSystemService(android.content.Context.USB_SERVICE) as UsbManager
+        val hasUsbHost = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_USB_HOST)
+        
+        println("StarPrinter: USB Host (OTG) support: $hasUsbHost")
+        println("StarPrinter: Connected USB devices: ${usbManager.deviceList.size}")
+        
+        // List all connected USB devices for debugging
+        usbManager.deviceList.forEach { (deviceName, device) ->
+          println("StarPrinter: USB Device - Name: $deviceName")
+          println("StarPrinter: USB Device - VendorId: ${device.vendorId} (0x${device.vendorId.toString(16)})")
+          println("StarPrinter: USB Device - ProductId: ${device.productId} (0x${device.productId.toString(16)})")
+          println("StarPrinter: USB Device - Manufacturer: ${device.manufacturerName}")
+          println("StarPrinter: USB Device - Product: ${device.productName}")
+          
+          // Check if this matches TSP100 USB IDs (Star Micronics vendor ID: 0x0519 = 1305)
+          if (device.vendorId == 1305) {
+            println("StarPrinter: *** STAR MICRONICS DEVICE DETECTED! ***")
+            println("StarPrinter: This appears to be a Star printer via USB")
+          }
+        }
+        
         // Check Bluetooth permissions and availability
         if (!hasBluetoothPermissions()) {
           CoroutineScope(Dispatchers.Main).launch {
@@ -76,24 +101,30 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         
         // Try discovery with different interface combinations to find what works
         val interfaceTypeSets = listOf(
-          // Try LAN and Bluetooth first (most common and stable)
-          listOf(InterfaceType.Lan, InterfaceType.Bluetooth),
-          // Try with Bluetooth LE as well
-          listOf(InterfaceType.Lan, InterfaceType.Bluetooth, InterfaceType.BluetoothLE),
-          // Try USB separately if other methods work
+          // Try LAN only first (in case WiFi is available)
+          listOf(InterfaceType.Lan),
+          // Try Bluetooth only (works even without WiFi)
+          listOf(InterfaceType.Bluetooth),
+          // Try Bluetooth LE only (works even without WiFi)
+          listOf(InterfaceType.BluetoothLE),
+          // Try USB separately
           listOf(InterfaceType.Usb),
-          // Fallback to LAN only
-          listOf(InterfaceType.Lan)
+          // Try combined LAN + Bluetooth (when both are available)
+          listOf(InterfaceType.Lan, InterfaceType.Bluetooth, InterfaceType.BluetoothLE)
         )
         
-        var discoverySucceeded = false
+        // Run ALL discovery types and combine results
+        val allDiscoveredPrinters = mutableSetOf<String>()
         
         for (interfaceTypes in interfaceTypeSets) {
           try {
             discoveryManager?.stopDiscovery()
             discoveryManager = StarDeviceDiscoveryManagerFactory.create(interfaceTypes, context)
             
-            discoveryManager?.discoveryTime = 10000 // 10 seconds
+            discoveryManager?.discoveryTime = 8000 // 8 seconds per discovery type
+            
+            val discoveryCompleted = CompletableDeferred<Unit>()
+            val discoveryPrinters = mutableListOf<String>()
             
             discoveryManager?.callback = object : StarDeviceDiscoveryManager.Callback {
               override fun onPrinterFound(printer: StarPrinter) {
@@ -106,19 +137,20 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                 }
                 val identifier = printer.connectionSettings.identifier
                 val model = printer.information?.model ?: "Unknown"
-                printers.add("$interfaceTypeStr:$identifier:$model")
+                val printerString = "$interfaceTypeStr:$identifier:$model"
+                discoveryPrinters.add(printerString)
               }
               
               override fun onDiscoveryFinished() {
-                CoroutineScope(Dispatchers.Main).launch {
-                  result.success(printers)
-                }
+                discoveryCompleted.complete(Unit)
               }
             }
             
             discoveryManager?.startDiscovery()
-            discoverySucceeded = true
-            break // Success, stop trying other combinations
+            discoveryCompleted.await()
+            
+            // Add all discovered printers to the combined set
+            allDiscoveredPrinters.addAll(discoveryPrinters)
             
           } catch (e: Exception) {
             // Log the error but continue trying other interface combinations
@@ -127,10 +159,11 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           }
         }
         
-        if (!discoverySucceeded) {
-          CoroutineScope(Dispatchers.Main).launch {
-            result.error("DISCOVERY_FAILED", "All discovery interface combinations failed", null)
-          }
+        // Convert set back to list and return all discovered printers
+        printers.addAll(allDiscoveredPrinters.toList())
+        
+        CoroutineScope(Dispatchers.Main).launch {
+          result.success(printers)
         }
         
       } catch (e: Exception) {
@@ -372,6 +405,89 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
   private fun isConnected(result: Result) {
     result.success(printer != null)
+  }
+
+  private fun runUsbDiagnostics(result: Result) {
+    CoroutineScope(Dispatchers.IO).launch {
+      try {
+        val diagnostics = mutableMapOf<String, Any>()
+        
+        // Check USB Host support
+        val packageManager = context.packageManager
+        val hasUsbHost = packageManager.hasSystemFeature(PackageManager.FEATURE_USB_HOST)
+        diagnostics["usb_host_supported"] = hasUsbHost
+        
+        // Check USB Manager and connected devices
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+        val deviceList = usbManager.deviceList
+        diagnostics["connected_usb_devices"] = deviceList.size
+        
+        val usbDevices = mutableListOf<Map<String, Any>>()
+        for ((deviceName, device) in deviceList) {
+          val deviceInfo = mapOf(
+            "device_name" to deviceName,
+            "vendor_id" to device.vendorId,
+            "product_id" to device.productId,
+            "device_class" to device.deviceClass,
+            "device_subclass" to device.deviceSubclass,
+            "product_name" to (device.productName ?: "Unknown"),
+            "manufacturer_name" to (device.manufacturerName ?: "Unknown")
+          )
+          usbDevices.add(deviceInfo)
+        }
+        diagnostics["usb_devices"] = usbDevices
+        
+        // Check for TSP100 specific devices (vendor ID 1305, common product IDs)
+        val tsp100Devices = deviceList.values.filter { device ->
+          device.vendorId == 1305 // Star Micronics vendor ID
+        }
+        diagnostics["tsp100_devices_found"] = tsp100Devices.size
+        
+        // Try USB-only discovery
+        var usbPrintersFound = 0
+        try {
+          val printers = mutableListOf<String>()
+          discoveryManager?.stopDiscovery()
+          discoveryManager = StarDeviceDiscoveryManagerFactory.create(listOf(InterfaceType.Usb), context)
+          
+          discoveryManager?.discoveryTime = 5000 // 5 seconds for diagnostics
+          
+          val discoveryCompleted = CompletableDeferred<Unit>()
+          
+          discoveryManager?.callback = object : StarDeviceDiscoveryManager.Callback {
+            override fun onPrinterFound(printer: StarPrinter) {
+              val identifier = printer.connectionSettings.identifier
+              val model = printer.information?.model ?: "Unknown"
+              printers.add("USB:$identifier:$model")
+              usbPrintersFound++
+            }
+            
+            override fun onDiscoveryFinished() {
+              discoveryCompleted.complete(Unit)
+            }
+          }
+          
+          discoveryManager?.startDiscovery()
+          discoveryCompleted.await()
+          
+          diagnostics["usb_printers_discovered"] = usbPrintersFound
+          diagnostics["usb_printer_list"] = printers
+          
+        } catch (e: Exception) {
+          diagnostics["usb_discovery_error"] = e.message ?: "Unknown error"
+          diagnostics["usb_printers_discovered"] = 0
+        }
+        
+        withContext(Dispatchers.Main) {
+          result.success(diagnostics)
+        }
+        
+      } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+          result.error("USB_DIAGNOSTICS_FAILED", e.message ?: "Unknown error", null)
+        }
+      }
+    }
   }
 
   // ActivityAware implementation

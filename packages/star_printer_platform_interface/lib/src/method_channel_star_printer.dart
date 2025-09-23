@@ -22,6 +22,12 @@ class MethodChannelStarPrinter extends StarPrinterPlatform {
   }
 
   @override
+  Future<Map<String, dynamic>> usbDiagnostics() async {
+    final result = await methodChannel.invokeMethod<Map<dynamic, dynamic>>('usbDiagnostics');
+    return result?.cast<String, dynamic>() ?? {};
+  }
+
+  @override
   Future<void> connect(StarConnectionSettings settings) async {
     await methodChannel.invokeMethod<void>('connect', settings.toMap());
   }

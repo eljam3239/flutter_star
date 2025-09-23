@@ -70,6 +70,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 [.bluetooth],
                 // Try Bluetooth LE only  
                 [.bluetoothLE],
+                // Try USB (might work with Lightning to USB adapters or USB-C iPads)
+                [.usb],
                 // Try combined LAN + Bluetooth when both are available
                 [.lan, .bluetooth, .bluetoothLE]
             ]
@@ -562,18 +564,72 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     }
     
     private func usbDiagnostics(result: @escaping FlutterResult) {
-        // iOS does not support USB host functionality
-        let diagnostics: [String: Any] = [
-            "usb_host_supported": false,
-            "connected_usb_devices": 0,
-            "usb_devices": [],
-            "tsp100_devices_found": 0,
-            "usb_printers_discovered": 0,
-            "usb_printer_list": [],
-            "platform": "iOS",
-            "note": "USB connectivity is not supported on iOS devices"
-        ]
+        print("Testing USB connectivity on iOS...")
         
-        result(diagnostics)
+        Task {
+            var diagnostics: [String: Any] = [
+                "platform": "iOS",
+                "note": "Testing USB discovery on iOS - may work with Lightning to USB or USB-C adapters"
+            ]
+            
+            do {
+                // Try USB discovery to see if it's actually supported
+                let manager = try StarDeviceDiscoveryManagerFactory.create(interfaceTypes: [.usb])
+                manager.discoveryTime = 5000  // 5 seconds for diagnostics
+                
+                class UsbDiscoveryDelegate: NSObject, StarDeviceDiscoveryManagerDelegate {
+                    var printers: [String] = []
+                    var isFinished = false
+                    
+                    func manager(_ manager: any StarDeviceDiscoveryManager, didFind printer: StarPrinter) {
+                        let identifier = printer.connectionSettings.identifier
+                        let modelName = printer.information?.model.rawValue ?? 0
+                        printers.append("USB:\(identifier):\(modelName)")
+                        print("Found USB printer: USB:\(identifier):\(modelName)")
+                    }
+                    
+                    func managerDidFinishDiscovery(_ manager: any StarDeviceDiscoveryManager) {
+                        print("USB discovery finished. Found \(printers.count) USB printers")
+                        isFinished = true
+                    }
+                }
+                
+                let delegate = UsbDiscoveryDelegate()
+                manager.delegate = delegate
+                
+                try manager.startDiscovery()
+                
+                // Wait for discovery to complete
+                var waitTime = 0
+                while !delegate.isFinished && waitTime < 6000 { // 6 second timeout
+                    try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    waitTime += 100
+                }
+                
+                diagnostics["usb_discovery_attempted"] = true
+                diagnostics["usb_printers_discovered"] = delegate.printers.count
+                diagnostics["usb_printer_list"] = delegate.printers
+                diagnostics["usb_supported"] = true
+                
+                if delegate.printers.isEmpty {
+                    diagnostics["status"] = "USB discovery completed but no printers found. This could mean: 1) No USB printers connected, 2) USB adapter not compatible, 3) Printer not in discoverable mode"
+                } else {
+                    diagnostics["status"] = "USB discovery successful! Found \(delegate.printers.count) USB printer(s)"
+                }
+                
+            } catch {
+                print("USB discovery failed: \(error.localizedDescription)")
+                diagnostics["usb_discovery_attempted"] = true
+                diagnostics["usb_supported"] = false
+                diagnostics["usb_error"] = error.localizedDescription
+                diagnostics["usb_printers_discovered"] = 0
+                diagnostics["usb_printer_list"] = []
+                diagnostics["status"] = "USB discovery failed: \(error.localizedDescription). This might indicate USB is not supported on this iOS device or adapter configuration."
+            }
+            
+            DispatchQueue.main.async {
+                result(diagnostics)
+            }
+        }
     }
 }

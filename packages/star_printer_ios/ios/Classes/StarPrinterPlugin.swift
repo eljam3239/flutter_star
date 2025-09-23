@@ -37,6 +37,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
             discoverPrinters(result: result)
         case "discoverBluetoothPrinters":
             discoverBluetoothPrinters(result: result)
+        case "usbDiagnostics":
+            usbDiagnostics(result: result)
         case "connect":
             connect(call: call, result: result)
         case "disconnect":
@@ -55,80 +57,107 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     }
     
     private func discoverPrinters(result: @escaping FlutterResult) {
-        print("Starting real LAN printer discovery...")
+        print("Starting combined printer discovery (LAN + Bluetooth)...")
         
         Task {
-            var discoveredPrinterStrings: [String] = []
+            var allDiscoveredPrinters: [String] = []
             
-            do {
-                // Create discovery manager for LAN only
-                let manager = try StarDeviceDiscoveryManagerFactory.create(interfaceTypes: [.lan])
-                manager.discoveryTime = 10000  // 10 seconds for thorough LAN scan
-                
-                // Create a simple delegate class inline
-                class SimpleDiscoveryDelegate: NSObject, StarDeviceDiscoveryManagerDelegate {
-                    var printers: [String] = []
-                    var printerObjects: [StarPrinter] = []
-                    var isFinished = false
+            // Try discovery with different interface combinations to match Android behavior
+            let interfaceTypeSets: [[StarIO10.InterfaceType]] = [
+                // Try LAN only first
+                [.lan],
+                // Try Bluetooth only
+                [.bluetooth],
+                // Try Bluetooth LE only  
+                [.bluetoothLE],
+                // Try combined LAN + Bluetooth when both are available
+                [.lan, .bluetooth, .bluetoothLE]
+            ]
+            
+            for interfaceTypes in interfaceTypeSets {
+                do {
+                    print("Trying discovery with interfaces: \(interfaceTypes)")
+                    let manager = try StarDeviceDiscoveryManagerFactory.create(interfaceTypes: interfaceTypes)
+                    manager.discoveryTime = 8000  // 8 seconds per discovery type
                     
-                    func manager(_ manager: any StarDeviceDiscoveryManager, didFind printer: StarPrinter) {
-                        let identifier = printer.connectionSettings.identifier
-                        let modelName: String
-                        if let model = printer.information?.model {
-                            modelName = String(describing: model)
-                        } else {
-                            modelName = "Unknown"
+                    // Create a simple delegate class inline
+                    class SimpleDiscoveryDelegate: NSObject, StarDeviceDiscoveryManagerDelegate {
+                        var printers: [String] = []
+                        var printerObjects: [StarPrinter] = []
+                        var isFinished = false
+                        
+                        func manager(_ manager: any StarDeviceDiscoveryManager, didFind printer: StarPrinter) {
+                            let identifier = printer.connectionSettings.identifier
+                            let modelName: String
+                            if let model = printer.information?.model {
+                                modelName = String(describing: model)
+                            } else {
+                                modelName = "Unknown"
+                            }
+                            
+                            // Determine interface type string
+                            let interfaceTypeStr: String
+                            switch printer.connectionSettings.interfaceType {
+                            case .lan:
+                                interfaceTypeStr = "LAN"
+                            case .bluetooth:
+                                interfaceTypeStr = "BT"
+                            case .bluetoothLE:
+                                interfaceTypeStr = "BLE"
+                            case .usb:
+                                interfaceTypeStr = "USB"
+                            @unknown default:
+                                interfaceTypeStr = "UNKNOWN"
+                            }
+                            
+                            let printerString = "\(interfaceTypeStr):\(identifier):\(modelName)"
+                            print("Found printer: \(printerString)")
+                            printers.append(printerString)
+                            printerObjects.append(printer)
                         }
                         
-                        // For LAN printers, try to get the IP address from the printer information
-                        var connectionIdentifier = identifier
-                        if let printerInfo = printer.information {
-                            print("Printer info: \(printerInfo)")
-                            // The nicInformation might be under a different property name
-                            // Let's check what properties are available
+                        func managerDidFinishDiscovery(_ manager: any StarDeviceDiscoveryManager) {
+                            print("Discovery finished. Found \(printers.count) printers")
+                            isFinished = true
                         }
-                        
-                        let printerString = "LAN:\(connectionIdentifier):\(modelName)"
-                        print("Found printer: \(printerString) - Interface: \(printer.connectionSettings.interfaceType.rawValue)")
-                        print("Connection settings: \(printer.connectionSettings)")
-                        printers.append(printerString)
-                        printerObjects.append(printer)
                     }
                     
-                    func managerDidFinishDiscovery(_ manager: any StarDeviceDiscoveryManager) {
-                        print("Discovery finished. Found \(printers.count) printers")
-                        isFinished = true
+                    let delegate = SimpleDiscoveryDelegate()
+                    manager.delegate = delegate
+                    
+                    print("Discovery manager created, starting discovery...")
+                    try manager.startDiscovery()
+                    
+                    // Wait for discovery to complete
+                    var waitTime = 0
+                    while !delegate.isFinished && waitTime < 10000 { // 10 second timeout
+                        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                        waitTime += 100
                     }
+                    
+                    // Add discovered printers to combined list (avoiding duplicates)
+                    for printer in delegate.printers {
+                        if !allDiscoveredPrinters.contains(printer) {
+                            allDiscoveredPrinters.append(printer)
+                        }
+                    }
+                    
+                    // Store printer objects for potential use
+                    self.discoveredPrinters.append(contentsOf: delegate.printerObjects)
+                    
+                    print("Discovery completed for \(interfaceTypes). Found \(delegate.printers.count) printers.")
+                    
+                } catch {
+                    print("Discovery failed for interfaces \(interfaceTypes): \(error.localizedDescription)")
+                    continue
                 }
-                
-                let delegate = SimpleDiscoveryDelegate()
-                manager.delegate = delegate
-                
-                print("Discovery manager created, starting discovery...")
-                try manager.startDiscovery()
-                
-                // Wait for discovery to complete
-                var waitTime = 0
-                while !delegate.isFinished && waitTime < 12000 { // 12 second timeout
-                    try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-                    waitTime += 100
-                }
-                
-                // Store both the printer objects and string representations
-                self.discoveredPrinters = delegate.printerObjects
-                discoveredPrinterStrings = delegate.printers
-                print("Final discovery result: \(discoveredPrinterStrings)")
-                
-            } catch {
-                print("Failed to start discovery: \(error)")
-                DispatchQueue.main.async {
-                    result(FlutterError(code: "DISCOVERY_FAILED", message: error.localizedDescription, details: nil))
-                }
-                return
             }
             
+            print("All discovery completed. Total printers found: \(allDiscoveredPrinters.count)")
+            
+            // Return all discovered printers
             DispatchQueue.main.async {
-                result(discoveredPrinterStrings)
+                result(allDiscoveredPrinters)
             }
         }
     }
@@ -509,8 +538,6 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     .addDrawer(StarXpandCommand.DrawerBuilder()
                         .actionOpen(StarXpandCommand.Drawer.OpenParameter()
                             .setChannel(.no1)  // Use channel 1 (standard for most cash drawers)
-                            .setOnTime(.millisecond100)  // Pulse on time: 100ms
-                            .setOffTime(.millisecond200) // Pulse off time: 200ms
                         )
                     )
                 )
@@ -532,5 +559,21 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     
     private func isConnected(result: @escaping FlutterResult) {
         result(printer != nil)
+    }
+    
+    private func usbDiagnostics(result: @escaping FlutterResult) {
+        // iOS does not support USB host functionality
+        let diagnostics: [String: Any] = [
+            "usb_host_supported": false,
+            "connected_usb_devices": 0,
+            "usb_devices": [],
+            "tsp100_devices_found": 0,
+            "usb_printers_discovered": 0,
+            "usb_printer_list": [],
+            "platform": "iOS",
+            "note": "USB connectivity is not supported on iOS devices"
+        ]
+        
+        result(diagnostics)
     }
 }

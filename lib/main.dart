@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:star_printer/star_printer.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:io' show Platform;
 import 'bluetooth_test_widget.dart';
 import 'wired_test_widget.dart';
 
@@ -72,39 +73,45 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _checkAndRequestPermissions() async {
-    // Check if we need to request Bluetooth permissions
-    final bluetoothStatus = await Permission.bluetoothConnect.status;
-    final bluetoothScanStatus = await Permission.bluetoothScan.status;
-    
-    if (!bluetoothStatus.isGranted || !bluetoothScanStatus.isGranted) {
-      print('DEBUG: Bluetooth permissions not granted, requesting...');
+    // Only check Bluetooth permissions on Android - iOS handles this differently
+    if (Platform.isAndroid) {
+      // Check if we need to request Bluetooth permissions
+      final bluetoothStatus = await Permission.bluetoothConnect.status;
+      final bluetoothScanStatus = await Permission.bluetoothScan.status;
       
-      // Request permissions
-      final results = await [
-        Permission.bluetoothConnect,
-        Permission.bluetoothScan,
-        Permission.location, // Also needed for Bluetooth discovery on some devices
-      ].request();
-      
-      results.forEach((permission, status) {
-        print('DEBUG: Permission $permission: $status');
-      });
-      
-      if (results[Permission.bluetoothConnect]?.isGranted == true) {
-        print('DEBUG: Bluetooth permissions granted');
-      } else {
-        print('DEBUG: Bluetooth permissions still denied');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Bluetooth permissions are required for printer discovery. Please enable them in settings.'),
-              duration: Duration(seconds: 5),
-            ),
-          );
+      if (!bluetoothStatus.isGranted || !bluetoothScanStatus.isGranted) {
+        print('DEBUG: Bluetooth permissions not granted, requesting...');
+        
+        // Request permissions
+        final results = await [
+          Permission.bluetoothConnect,
+          Permission.bluetoothScan,
+          Permission.location, // Also needed for Bluetooth discovery on some devices
+        ].request();
+        
+        results.forEach((permission, status) {
+          print('DEBUG: Permission $permission: $status');
+        });
+        
+        if (results[Permission.bluetoothConnect]?.isGranted == true) {
+          print('DEBUG: Bluetooth permissions granted');
+        } else {
+          print('DEBUG: Bluetooth permissions still denied');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Bluetooth permissions are required for printer discovery. Please enable them in settings.'),
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
         }
+      } else {
+        print('DEBUG: Bluetooth permissions already granted');
       }
     } else {
-      print('DEBUG: Bluetooth permissions already granted');
+      // iOS - Bluetooth permissions are handled automatically by the system
+      print('DEBUG: Running on iOS - Bluetooth permissions handled by system');
     }
   }
 
@@ -119,30 +126,32 @@ class _MyHomePageState extends State<MyHomePage> {
       print('DEBUG: Starting printer discovery...');
       print('DEBUG: Looking for printers on network. TSP100 should be at 10.20.30.125');
       
-      // Check permissions first
-      final bluetoothConnectStatus = await Permission.bluetoothConnect.status;
-      final bluetoothScanStatus = await Permission.bluetoothScan.status;
-      
-      if (!bluetoothConnectStatus.isGranted || !bluetoothScanStatus.isGranted) {
-        print('DEBUG: Bluetooth permissions not granted, requesting again...');
-        await _checkAndRequestPermissions();
+      // Check permissions first - only on Android
+      if (Platform.isAndroid) {
+        final bluetoothConnectStatus = await Permission.bluetoothConnect.status;
+        final bluetoothScanStatus = await Permission.bluetoothScan.status;
         
-        // Check again after request
-        final newBluetoothConnectStatus = await Permission.bluetoothConnect.status;
-        if (!newBluetoothConnectStatus.isGranted) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Bluetooth permissions required. Please enable in Android Settings > Apps > test_star > Permissions'),
-                action: SnackBarAction(
-                  label: 'Open Settings',
-                  onPressed: () => openAppSettings(),
+        if (!bluetoothConnectStatus.isGranted || !bluetoothScanStatus.isGranted) {
+          print('DEBUG: Bluetooth permissions not granted, requesting again...');
+          await _checkAndRequestPermissions();
+          
+          // Check again after request
+          final newBluetoothConnectStatus = await Permission.bluetoothConnect.status;
+          if (!newBluetoothConnectStatus.isGranted) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Bluetooth permissions required. Please enable in Android Settings > Apps > test_star > Permissions'),
+                  action: SnackBarAction(
+                    label: 'Open Settings',
+                    onPressed: () => openAppSettings(),
+                  ),
+                  duration: const Duration(seconds: 8),
                 ),
-                duration: const Duration(seconds: 8),
-              ),
-            );
+              );
+            }
+            return;
           }
-          return;
         }
       }
       

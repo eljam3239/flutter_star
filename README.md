@@ -21,6 +21,7 @@ Same goes for using bluetooth after it was used for wired: unplug the wired devi
 
 TODO: 
 1. Test usb ios implementation once I have a device that supports it.
+2. Improve iOS setup requirements by putting the Star SDK in its own Cocoa pod?
 
 ## Setup Instructions
 iOS: 

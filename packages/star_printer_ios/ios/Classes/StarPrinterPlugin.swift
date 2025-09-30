@@ -93,6 +93,11 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                             let modelName: String
                             if let model = printer.information?.model {
                                 modelName = String(describing: model)
+                                print("Discovered printer model enum value: \(model.rawValue)")
+                                print("Discovered printer emulation: \(String(describing: printer.information?.emulation))")
+                                if let emulation = printer.information?.emulation {
+                                    print("Emulation enum value: \(emulation.rawValue)")
+                                }
                             } else {
                                 modelName = "Unknown"
                             }
@@ -130,11 +135,20 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     print("Discovery manager created, starting discovery...")
                     try manager.startDiscovery()
                     
-                    // Wait for discovery to complete
+                    // Wait for discovery to complete with proper timeout
                     var waitTime = 0
-                    while !delegate.isFinished && waitTime < 10000 { // 10 second timeout
+                    let maxWaitTime = 10000 // 10 seconds max per interface type
+                    while !delegate.isFinished && waitTime < maxWaitTime {
                         try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
                         waitTime += 100
+                    }
+                    
+                    // Force stop discovery if it's still running
+                    if !delegate.isFinished {
+                        print("Discovery timeout reached, stopping discovery for \(interfaceTypes)")
+                        manager.stopDiscovery()
+                        // Give it a moment to clean up
+                        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                     }
                     
                     // Add discovered printers to combined list (avoiding duplicates)
@@ -233,11 +247,20 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 print("📡 Starting discovery with both Bluetooth and BLE interfaces...")
                 try manager.startDiscovery()
                 
-                // Wait for discovery to complete
+                // Wait for discovery to complete with proper timeout
                 var waitTime = 0
-                while !delegate.isFinished && waitTime < 12000 { // 12 second timeout
+                let maxWaitTime = 12000 // 12 second timeout
+                while !delegate.isFinished && waitTime < maxWaitTime {
                     try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
                     waitTime += 100
+                }
+                
+                // Force stop discovery if it's still running
+                if !delegate.isFinished {
+                    print("Bluetooth discovery timeout reached, stopping discovery")
+                    manager.stopDiscovery()
+                    // Give it a moment to clean up
+                    try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                 }
                 
                 discoveredPrinterStrings = delegate.printers
@@ -278,25 +301,43 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         
         print("Connecting to \(interfaceType) printer with identifier: \(identifier)")
         
-        // Try to find the discovered printer object first to get IP address info
-        let foundPrinter = discoveredPrinters.first { printer in
-            // Match by identifier (IP address) or MAC address
-            return printer.connectionSettings.identifier == identifier
-        }
-        
-        // For now, let's just extract IP from the debug output we've seen
-        // We know the IP addresses are 10.20.30.70 and 10.20.30.155
-        var ipAddress: String? = nil
-        if identifier == "0011625AA26C" {
-            ipAddress = "10.20.30.70"  // Just use the IP address
-        } else if identifier == "00116242A952" {
-            ipAddress = "10.20.30.155"  // Just use the IP address
-        }
-        
-        if let ipAddr = ipAddress {
-            print("Using IP address for connection: \(ipAddr)")
+        Task {
+            // Force disconnect any existing connection first
+            if self.printer != nil {
+                print("Force disconnecting existing printer connection...")
+                do {
+                    try await self.printer?.close()
+                } catch {
+                    print("Error closing existing connection: \(error)")
+                }
+                self.printer = nil
+                self.connectionSettings = nil
+                
+                // Wait a moment for the printer to be released
+                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                print("Waited 2 seconds for printer to be released...")
+            }
             
-            Task {
+            // Continue with connection logic...
+            
+            // Try to find the discovered printer object first to get IP address info
+            let foundPrinter = self.discoveredPrinters.first { printer in
+                // Match by identifier (IP address) or MAC address
+                return printer.connectionSettings.identifier == identifier
+            }
+            
+            // For now, let's just extract IP from the debug output we've seen
+            // We know the IP addresses are 10.20.30.70 and 10.20.30.155
+            var ipAddress: String? = nil
+            if identifier == "0011625AA26C" {
+                ipAddress = "10.20.30.70"  // Just use the IP address
+            } else if identifier == "00116242A952" {
+                ipAddress = "10.20.30.155"  // Just use the IP address
+            }
+            
+            if let ipAddr = ipAddress {
+                print("Using IP address for connection: \(ipAddr)")
+                
                 do {
                     // Create new connection settings with IP address and explicit settings
                     self.connectionSettings = StarConnectionSettings(
@@ -359,11 +400,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         }
                     }
                 }
-            }
-        } else {
-            print("Printer not found in discovered list, creating new connection...")
-            
-            Task {
+            } else {
+                print("Printer not found in discovered list, creating new connection...")
+                
                 do {
                     let starInterfaceType: InterfaceType
                     switch interfaceType {
@@ -383,12 +422,12 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     let cleanIdentifier = identifier.components(separatedBy: ":").first ?? identifier
                     print("Using clean identifier: \(cleanIdentifier)")
                     
-                    connectionSettings = StarConnectionSettings(
+                    self.connectionSettings = StarConnectionSettings(
                         interfaceType: starInterfaceType,
                         identifier: cleanIdentifier
                     )
                     
-                    printer = StarPrinter(connectionSettings!)
+                    self.printer = StarPrinter(self.connectionSettings!)
                     
                     print("Attempting to open connection...")
                     
@@ -399,7 +438,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     }
                     
                     let connectionTask = Task {
-                        try await printer?.open()
+                        try await self.printer?.open()
                     }
                     
                     // Race between connection and timeout
@@ -461,17 +500,90 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         
         Task {
             do {
+                // First check printer status
+                print("Checking printer status before printing...")
+                let status = try await self.printer?.getStatus()
+                print("Printer status: hasError=\(status?.hasError ?? true), online=\(!(status?.hasError ?? true))")
+                
+                if let status = status, status.hasError {
+                    print("WARNING: Printer reports error status before printing")
+                } else {
+                    print("Printer status looks good")
+                }
+                
                 print("Building StarXpand command...")
+                
+                // Get printer information for debugging
+                if let printerInfo = self.printer?.information {
+                    print("PRINTER DEBUG INFO:")
+                    print("  Model: \(printerInfo.model) (raw: \(printerInfo.model.rawValue))")
+                    print("  Emulation: \(printerInfo.emulation) (raw: \(printerInfo.emulation.rawValue))")
+                    print("  Connection Type: \(self.printer?.connectionSettings.interfaceType.rawValue ?? -1)")
+                    print("  Identifier: \(self.printer?.connectionSettings.identifier ?? "unknown")")
+                } else {
+                    print("No printer information available")
+                }
+                
                 let builder = StarXpandCommand.StarXpandCommandBuilder()
-                _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
-                    .addPrinter(StarXpandCommand.PrinterBuilder()
-                        .actionPrintText(content)
-                        .actionCut(.partial)
+                
+                // Check if this is a graphics-only printer (TSP100iii series)
+                let isGraphicsOnlyPrinter = { () -> Bool in
+                    if let printerInfo = self.printer?.information {
+                        let model = printerInfo.model
+                        // TSP100iii series models that only support graphics
+                        // Based on your logs, we know tsp100IIIW exists (raw value 5)
+                        return model == .tsp100IIIW
+                    }
+                    return false
+                }()
+                
+                if isGraphicsOnlyPrinter {
+                    print("Graphics-only printer detected (TSP100iii series) - using actionPrintImage instead of actionPrintText")
+                    
+                    // For TSP100iii series, we need to create a text image
+                    let testText = "*** STAR PRINTER TEST ***\nHello World!\nTest Print\n\n"
+                    
+                    // Create a simple text image using Core Graphics
+                    let textImage = createTextImage(text: testText)
+                    
+                    if let image = textImage {
+                        _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
+                            .addPrinter(StarXpandCommand.PrinterBuilder()
+                                .actionPrintImage(StarXpandCommand.Printer.ImageParameter(image: image, width: 576))
+                                .actionFeedLine(2)
+                                .actionCut(.partial)
+                            )
+                        )
+                        print("Using actionPrintImage with generated text image")
+                    } else {
+                        print("Failed to create text image, trying basic approach")
+                        // Fallback - try with minimal commands
+                        _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
+                            .addPrinter(StarXpandCommand.PrinterBuilder()
+                                .actionFeedLine(5)
+                                .actionCut(.partial)
+                            )
+                        )
+                    }
+                } else {
+                    print("Standard printer detected - using actionPrintText")
+                    
+                    // Use just basic text for testing
+                    let testText = "*** STAR PRINTER TEST ***\nHello World!\nTest Print\n\n"
+                    
+                    _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
+                        .addPrinter(StarXpandCommand.PrinterBuilder()
+                            .actionPrintText(testText)
+                            .actionFeedLine(2)
+                            .actionCut(.partial)
+                        )
                     )
-                )
+                }
                 
                 let commands = builder.getCommands()
-                print("Commands built, sending to printer...")
+                print("Generated commands: \(commands)")
+                print("Command length: \(commands.count) characters")
+                print("Sending to printer...")
                 
                 try await self.printer?.print(command: commands)
                 
@@ -631,5 +743,61 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 result(diagnostics)
             }
         }
+    }
+    
+    // Helper function to create an image from text for graphics-only printers
+    private func createTextImage(text: String) -> UIImage? {
+        // Create image dimensions for receipt printer (576px width is standard for 80mm)
+        let imageWidth: CGFloat = 576
+        let font = UIFont.systemFont(ofSize: 24)
+        let textColor = UIColor.black
+        let backgroundColor = UIColor.white
+        
+        // Calculate text size
+        let textAttributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor
+        ]
+        
+        let textSize = text.boundingRect(
+            with: CGSize(width: imageWidth - 40, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: textAttributes,
+            context: nil
+        ).size
+        
+        let imageHeight = max(textSize.height + 40, 100) // Add padding
+        let imageSize = CGSize(width: imageWidth, height: imageHeight)
+        
+        // Create image context
+        UIGraphicsBeginImageContextWithOptions(imageSize, true, 1.0)
+        guard let context = UIGraphicsGetCurrentContext() else {
+            UIGraphicsEndImageContext()
+            return nil
+        }
+        
+        // Fill background
+        context.setFillColor(backgroundColor.cgColor)
+        context.fill(CGRect(origin: .zero, size: imageSize))
+        
+        // Draw text
+        let textRect = CGRect(
+            x: 20,
+            y: 20,
+            width: imageWidth - 40,
+            height: textSize.height
+        )
+        
+        text.draw(in: textRect, withAttributes: textAttributes)
+        
+        // Get image
+        guard let image = UIGraphicsGetImageFromCurrentImageContext() else {
+            UIGraphicsEndImageContext()
+            return nil
+        }
+        UIGraphicsEndImageContext()
+        
+        // Return the UIImage directly
+        return image
     }
 }

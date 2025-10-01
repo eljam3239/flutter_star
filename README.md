@@ -5,10 +5,10 @@ https://github.com/star-micronics/StarXpand-SDK-Android/tree/main
 
 Supported:
 
-| Device      | TSP100iv | TSP100ivsk | mPop | mC-Label2 | TSP100iii |
-|-------------|--------|----------|------|-----------|---------|
-| iOS         |   LAN     | LAN, Bluetooth         | Bluetooth     | LAN, Bluetooth, USB | LAN |
-| Android     |  LAN      |  LAN, Bluetooth, usb-a        |  Bluetooth , usb-b   | LAN, Bluetooth, USB | LAN |
+| Device      | TSP100iv | TSP100ivsk | mPop | mC-Label2 | TSP100iii | mC_Print3 (MCP31LB) |
+|-------------|--------|----------|------|-----------|---------|--------|
+| iOS         |   LAN     | LAN, Bluetooth         | Bluetooth     | LAN, Bluetooth, USB | LAN | LAN, Bluetooth, usb-a-usb-c |
+| Android     |  LAN      |  LAN, Bluetooth, usb-a        |  Bluetooth , usb-b   | LAN, Bluetooth, USB | LAN | LAN, Bluetooth, usb-b |
 
 TSP100iv wired to cash drawer can open cash drawer upon completion of print jobs over LAN. Same with builtin mPop cash drawer.
 

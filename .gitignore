@@ -80,3 +80,4 @@ app.*.map.json
 *.p12
 *.mobileprovision
 *.certSigningRequest
+.metadata

@@ -7,7 +7,7 @@ Supported:
 
 | Device      | TSP100iv | TSP100ivsk | mPop | mC-Label2 | TSP100iii |
 |-------------|--------|----------|------|-----------|---------|
-| iOS         |   LAN     | LAN, Bluetooth         | Bluetooth     | LAN | 
+| iOS         |   LAN     | LAN, Bluetooth         | Bluetooth     | LAN, Bluetooth, USB | LAN |
 | Android     |  LAN      |  LAN, Bluetooth, usb-a        |  Bluetooth , usb-b   |
 
 TSP100iv wired to cash drawer can open cash drawer upon completion of print jobs over LAN. Same with builtin mPop cash drawer.
@@ -16,7 +16,7 @@ Set the auto-connect to off in a bluetooth printer's bluetooth settings in the q
 
 Switch the printer off and turn back on if plugging a usb into the printer doesn't work after it was previously connected via bluetooth.
 
-Same goes for using bluetooth after it was used for wired: unplug the wired device, power the printer off and on again, then you'll be able to connect via Bluetooth. The tsp100ivsk could print over Bluetooth and usb without a power cycle when connected to the android tablet. 
+Same goes for using bluetooth after it was used for wired: unplug the wired device, power the printer off and on again, then you'll be able to connect via Bluetooth. The tsp100ivsk could print over Bluetooth and usb without a power cycle when connected to the android tablet. The mC-Label2 seems to allow connecting to Bluetooth after a wired connection without a power cycle, provided the cable is unplugged and the device is paired in the tablet's bluetooth settings. 
 
 
 TODO: 

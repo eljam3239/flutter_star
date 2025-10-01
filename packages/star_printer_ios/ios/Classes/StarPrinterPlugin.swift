@@ -496,7 +496,21 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
             return
         }
         
-        print("Printer is connected, attempting to print...")
+        // Read optional layout settings coming from Dart
+        let settings = args["settings"] as? [String: Any]
+        let layout = settings?["layout"] as? [String: Any]
+        let header = layout?["header"] as? [String: Any]
+        let imageBlock = layout?["image"] as? [String: Any]
+
+        // Defaults
+        let headerTitle = (header?["title"] as? String) ?? ""
+        let headerFontSize = CGFloat((header?["fontSize"] as? Int) ?? 32)
+        let headerSpacing = Int((header?["spacingLines"] as? Int) ?? 1)
+        let smallImageBase64 = imageBlock?["base64"] as? String
+        let smallImageWidth = (imageBlock?["width"] as? Int) ?? 200
+        let smallImageSpacing = (imageBlock?["spacingLines"] as? Int) ?? 1
+
+        print("Printer is connected, attempting to print with structured layout...")
         
         Task {
             do {
@@ -525,60 +539,68 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 }
                 
                 let builder = StarXpandCommand.StarXpandCommandBuilder()
-                
-                // Check if this is a graphics-only printer (TSP100iii series)
-                let isGraphicsOnlyPrinter = { () -> Bool in
-                    if let printerInfo = self.printer?.information {
-                        let model = printerInfo.model
-                        // TSP100iii series models that only support graphics
-                        // Based on your logs, we know tsp100IIIW exists (raw value 5)
+
+                // Graphics-only detection
+                let graphicsOnly: Bool = {
+                    if let model = self.printer?.information?.model {
                         return model == .tsp100IIIW
                     }
                     return false
                 }()
-                
-                if isGraphicsOnlyPrinter {
-                    print("Graphics-only printer detected (TSP100iii series) - using actionPrintImage instead of actionPrintText")
-                    
-                    // For TSP100iii series, we need to create a text image
-                    let testText = "*** STAR PRINTER TEST ***\nHello World!\nTest Print\n\n"
-                    
-                    // Create a simple text image using Core Graphics
-                    let textImage = createTextImage(text: testText)
-                    
-                    if let image = textImage {
-                        _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
-                            .addPrinter(StarXpandCommand.PrinterBuilder()
-                                .actionPrintImage(StarXpandCommand.Printer.ImageParameter(image: image, width: 576))
-                                .actionFeedLine(2)
-                                .actionCut(.partial)
-                            )
-                        )
-                        print("Using actionPrintImage with generated text image")
+
+                // Build printer actions according to layout
+                let printerBuilder = StarXpandCommand.PrinterBuilder()
+
+                // 1) Header: draw as image for predictable layout (works for all models)
+                if !headerTitle.isEmpty {
+                    if let rawHeaderImage = createTextImage(text: headerTitle, fontSize: headerFontSize, imageWidth: 576),
+                       let safeHeaderImage = ensureVisibleImage(rawHeaderImage, targetWidth: 576) {
+                        print("Printing header image at width=576 (safeguarded)")
+                        let param = StarXpandCommand.Printer.ImageParameter(image: safeHeaderImage, width: 576)
+                        _ = printerBuilder
+                            .styleAlignment(.center)
+                            .actionPrintImage(param)
+                            .styleAlignment(.left)
+                        if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
+                    }
+                }
+
+                // 2) Small centered image (optional)
+                if let base64 = smallImageBase64 {
+                    let clampedWidth = max(8, min(smallImageWidth, 576))
+                    let decoded = decodeBase64Image(base64)
+                    let sourceImage = decoded ?? createPlaceholderLogo(size: clampedWidth)
+                    if decoded == nil {
+                        print("Small image: using placeholder logo (width=\(clampedWidth))")
+                    }
+                    if let src = sourceImage, let safeSmall = ensureVisibleImage(src, targetWidth: clampedWidth) {
+                        print("Printing small image at width=\(clampedWidth) (safeguarded)")
+                        let param = StarXpandCommand.Printer.ImageParameter(image: safeSmall, width: clampedWidth)
+                        _ = printerBuilder
+                            .styleAlignment(.center)
+                            .actionPrintImage(param)
+                            .styleAlignment(.left)
+                        if smallImageSpacing > 0 { _ = printerBuilder.actionFeedLine(smallImageSpacing) }
                     } else {
-                        print("Failed to create text image, trying basic approach")
-                        // Fallback - try with minimal commands
-                        _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
-                            .addPrinter(StarXpandCommand.PrinterBuilder()
-                                .actionFeedLine(5)
-                                .actionCut(.partial)
-                            )
-                        )
+                        print("Small image skipped: neither base64 decode nor placeholder succeeded")
+                    }
+                }
+
+                // 3) Body content
+                if graphicsOnly {
+                    // Render body text to image for graphics-only printers
+                    if let textImage = createTextImage(text: content, fontSize: 24, imageWidth: 576),
+                       let safeText = ensureVisibleImage(textImage, targetWidth: 576) {
+                        let param = StarXpandCommand.Printer.ImageParameter(image: safeText, width: 576)
+                        _ = printerBuilder.actionPrintImage(param)
+                        _ = printerBuilder.actionFeedLine(2)
                     }
                 } else {
-                    print("Standard printer detected - using actionPrintText")
-                    
-                    // Use just basic text for testing
-                    let testText = "*** STAR PRINTER TEST ***\nHello World!\nTest Print\n\n"
-                    
-                    _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
-                        .addPrinter(StarXpandCommand.PrinterBuilder()
-                            .actionPrintText(testText)
-                            .actionFeedLine(2)
-                            .actionCut(.partial)
-                        )
-                    )
+                    _ = printerBuilder.actionPrintText(content)
+                    _ = printerBuilder.actionFeedLine(2)
                 }
+
+                _ = builder.addDocument(StarXpandCommand.DocumentBuilder().addPrinter(printerBuilder.actionCut(.partial)))
                 
                 let commands = builder.getCommands()
                 print("Generated commands: \(commands)")
@@ -745,59 +767,136 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         }
     }
     
-    // Helper function to create an image from text for graphics-only printers
-    private func createTextImage(text: String) -> UIImage? {
-        // Create image dimensions for receipt printer (576px width is standard for 80mm)
-        let imageWidth: CGFloat = 576
-        let font = UIFont.systemFont(ofSize: 24)
+    // Helper: create an image from text with adjustable font/width
+    private func createTextImage(text: String, fontSize: CGFloat, imageWidth: CGFloat = 576) -> UIImage? {
+        let font = UIFont.systemFont(ofSize: fontSize)
         let textColor = UIColor.black
         let backgroundColor = UIColor.white
-        
-        // Calculate text size
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+
         let textAttributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: textColor
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
         ]
-        
+
+        let bounds = CGSize(width: imageWidth - 40, height: CGFloat.greatestFiniteMagnitude)
         let textSize = text.boundingRect(
-            with: CGSize(width: imageWidth - 40, height: CGFloat.greatestFiniteMagnitude),
+            with: bounds,
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: textAttributes,
             context: nil
         ).size
-        
-        let imageHeight = max(textSize.height + 40, 100) // Add padding
+
+        let imageHeight = max(textSize.height + 40, 100)
         let imageSize = CGSize(width: imageWidth, height: imageHeight)
-        
-        // Create image context
+
         UIGraphicsBeginImageContextWithOptions(imageSize, true, 1.0)
         guard let context = UIGraphicsGetCurrentContext() else {
             UIGraphicsEndImageContext()
             return nil
         }
-        
-        // Fill background
         context.setFillColor(backgroundColor.cgColor)
         context.fill(CGRect(origin: .zero, size: imageSize))
-        
-        // Draw text
-        let textRect = CGRect(
-            x: 20,
-            y: 20,
-            width: imageWidth - 40,
-            height: textSize.height
-        )
-        
+
+        let textRect = CGRect(x: 20, y: 20, width: imageWidth - 40, height: textSize.height)
         text.draw(in: textRect, withAttributes: textAttributes)
-        
-        // Get image
+
         guard let image = UIGraphicsGetImageFromCurrentImageContext() else {
             UIGraphicsEndImageContext()
             return nil
         }
         UIGraphicsEndImageContext()
-        
-        // Return the UIImage directly
         return image
+    }
+
+    // Helper: decode base64 PNG/JPEG (supports data URIs and whitespace)
+    private func decodeBase64Image(_ base64: String) -> UIImage? {
+        // Strip data URI prefix if present
+        let cleaned: String = {
+            let trimmed = base64.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let range = trimmed.range(of: ","), trimmed.lowercased().hasPrefix("data:image") {
+                return String(trimmed[range.upperBound...])
+            }
+            return trimmed
+        }()
+        // Remove accidental spaces/newlines inside the payload
+        let compact = cleaned.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: " ", with: "")
+        if let data = Data(base64Encoded: compact) {
+            if let image = UIImage(data: data) {
+                // Normalize into a standard bitmap to avoid PNG encoder/decoder edge cases
+                if let normalized = normalizeImage(image) {
+                    print("decodeBase64Image: normalized image size=\(normalized.size)")
+                    return normalized
+                }
+                return image
+            } else {
+                print("decodeBase64Image: Failed to create UIImage from data (bytes=\(data.count))")
+                return nil
+            }
+        } else {
+            print("decodeBase64Image: Base64 decode failed. Prefix=\(String(compact.prefix(30)))… length=\(compact.count)")
+            return nil
+        }
+    }
+
+    // Normalize a UIImage into a standard ARGB bitmap at scale 1.0 with white background
+    private func normalizeImage(_ image: UIImage) -> UIImage? {
+        let size = image.size
+        UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
+        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.fill(CGRect(origin: .zero, size: size))
+        image.draw(in: CGRect(origin: .zero, size: size))
+        let result = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return result
+    }
+
+    // Helper: simple placeholder logo if decoding fails
+    private func createPlaceholderLogo(size: Int) -> UIImage? {
+        let dim = CGFloat(max(16, min(size, 576)))
+        let rect = CGRect(x: 0, y: 0, width: dim, height: dim)
+        UIGraphicsBeginImageContextWithOptions(rect.size, true, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
+        // Filled black square for high visibility
+        ctx.setFillColor(UIColor.black.cgColor)
+        ctx.fill(rect)
+        let image = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return image
+    }
+
+    // Safeguard: ensure visible black content by adding a subtle border and cross-lines
+    // Also normalizes to 1.0 scale with white background. This guarantees the printer
+    // has non-empty (non-AAAA..) data even for near-white or tiny images.
+    private func ensureVisibleImage(_ image: UIImage, targetWidth: Int) -> UIImage? {
+        let width = CGFloat(max(8, min(targetWidth, 576)))
+        let aspect = image.size.height / max(image.size.width, 1)
+        let height = max(8, width * aspect)
+        let size = CGSize(width: width, height: height)
+
+        UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
+        // White background
+        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.fill(CGRect(origin: .zero, size: size))
+        // Draw the original image fitted
+        image.draw(in: CGRect(origin: .zero, size: size))
+        // Add 1px black border
+        ctx.setStrokeColor(UIColor.black.cgColor)
+        ctx.setLineWidth(1)
+        ctx.stroke(CGRect(x: 0.5, y: 0.5, width: size.width - 1, height: size.height - 1))
+        // Add thin cross to guarantee dark pixels
+        ctx.move(to: CGPoint(x: 0, y: 0))
+        ctx.addLine(to: CGPoint(x: size.width, y: size.height))
+        ctx.move(to: CGPoint(x: size.width, y: 0))
+        ctx.addLine(to: CGPoint(x: 0, y: size.height))
+        ctx.strokePath()
+        let out = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return out
     }
 }

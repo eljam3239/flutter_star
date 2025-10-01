@@ -66,10 +66,31 @@ class _MyHomePageState extends State<MyHomePage> {
   String? _selectedPrinter; // Add selected printer tracking
   bool _openDrawerAfterPrint = true; // Option to auto-open drawer after printing
 
+  // Receipt layout controls (for integration into POS app)
+  String _headerTitle = "Dick N' Balls";
+  int _headerFontSize = 32; // header-sized font
+  int _headerSpacingLines = 1; // blank lines after header
+  String? _logoBase64; // small centered image (base64-encoded PNG)
+  int _imageWidthPx = 200; // width in pixels for the small image
+  int _imageSpacingLines = 1; // blank lines after image
+  late final TextEditingController _headerController;
+
+  // A tiny 32x32 black square PNG as a sample logo (base64)
+  // You can replace this with your own base64-encoded PNG at runtime
+  static const String _sampleLogoBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAKElEQVRYhe3PsQkAIAwAsTgv//+sA0hJr4YqXoQAAAC4g0g3iQAAAPw3gqA6n9K2ylgAAAAASUVORK5CYII=';
+
   @override
   void initState() {
     super.initState();
+    _headerController = TextEditingController(text: _headerTitle);
     _checkAndRequestPermissions();
+  }
+
+  @override
+  void dispose() {
+    _headerController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkAndRequestPermissions() async {
@@ -267,6 +288,27 @@ class _MyHomePageState extends State<MyHomePage> {
     
     try {
       print('DEBUG: Creating print job...');
+      // Build structured layout settings to be interpreted by native layers
+      final layoutSettings = {
+        'layout': {
+          'header': {
+            'title': _headerTitle,
+            'align': 'center',
+            'fontSize': _headerFontSize,
+            'spacingLines': _headerSpacingLines,
+          },
+          'image': _logoBase64 == null
+              ? null
+              : {
+                  'base64': _logoBase64,
+                  'mime': 'image/png',
+                  'align': 'center',
+                  'width': _imageWidthPx,
+                  'spacingLines': _imageSpacingLines,
+                },
+        },
+      };
+
       final printJob = PrintJob(
         content: '''
            .--._.--.
@@ -287,6 +329,7 @@ Counter: $_counter
 Print Test
 
 ''',
+        settings: layoutSettings,
       );
       
       print('DEBUG: Sending print job to printer...');
@@ -514,6 +557,107 @@ Print Test
                       if (_selectedPrinter != null)
                         Text('Selected: ${_selectedPrinter!}', 
                              style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+                    ],
+                    const SizedBox(height: 16),
+                    // Receipt Layout Controls
+                    Text(
+                      'Receipt Header/Layout',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _headerController,
+                      decoration: const InputDecoration(
+                        labelText: 'Header Title',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (v) => setState(() => _headerTitle = v),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Text('Header Size'),
+                        Expanded(
+                          child: Slider(
+                            value: _headerFontSize.toDouble(),
+                            min: 16,
+                            max: 48,
+                            divisions: 32,
+                            label: _headerFontSize.toString(),
+                            onChanged: (v) => setState(() => _headerFontSize = v.round()),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        const Text('Header Spacing (lines): '),
+                        Expanded(
+                          child: Slider(
+                            value: _headerSpacingLines.toDouble(),
+                            min: 0,
+                            max: 5,
+                            divisions: 5,
+                            label: _headerSpacingLines.toString(),
+                            onChanged: (v) => setState(() => _headerSpacingLines = v.round()),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              _logoBase64 = _sampleLogoBase64;
+                            });
+                          },
+                          child: const Text('Use Sample Logo'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: _logoBase64 != null
+                              ? () {
+                                  setState(() => _logoBase64 = null);
+                                }
+                              : null,
+                          child: const Text('Clear Logo'),
+                        ),
+                      ],
+                    ),
+                    if (_logoBase64 != null) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Text('Image Width (px): '),
+                          Expanded(
+                            child: Slider(
+                              value: _imageWidthPx.toDouble(),
+                              min: 64,
+                              max: 576,
+                              divisions: 64,
+                              label: _imageWidthPx.toString(),
+                              onChanged: (v) => setState(() => _imageWidthPx = v.round()),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          const Text('Image Spacing (lines): '),
+                          Expanded(
+                            child: Slider(
+                              value: _imageSpacingLines.toDouble(),
+                              min: 0,
+                              max: 5,
+                              divisions: 5,
+                              label: _imageSpacingLines.toString(),
+                              onChanged: (v) => setState(() => _imageSpacingLines = v.round()),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                     const SizedBox(height: 16),
                     Text('Connection Status: ${_isConnected ? "Connected" : "Disconnected"}'),

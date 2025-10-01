@@ -22,6 +22,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import android.app.Activity
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 
 /** StarPrinterPlugin */
 class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
@@ -329,11 +335,29 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     CoroutineScope(Dispatchers.IO).launch {
       try {
         val builder = StarXpandCommandBuilder()
-        builder.addDocument(DocumentBuilder().addPrinter(
-          PrinterBuilder()
-            .actionPrintText(content)
-            .actionCut(CutType.Partial)
-        ))
+
+        val graphicsOnly = isGraphicsOnlyPrinter()
+        if (graphicsOnly) {
+          println("StarPrinter: Graphics-only printer detected – using actionPrintImage")
+          val bitmap = createTextBitmap(content)
+          builder.addDocument(
+            DocumentBuilder().addPrinter(
+              PrinterBuilder()
+                .actionPrintImage(ImageParameter(bitmap, 576))
+                .actionFeedLine(2)
+                .actionCut(CutType.Partial)
+            )
+          )
+        } else {
+          builder.addDocument(
+            DocumentBuilder().addPrinter(
+              PrinterBuilder()
+                .actionPrintText(content)
+                .actionFeedLine(2)
+                .actionCut(CutType.Partial)
+            )
+          )
+        }
         
         val commands = builder.getCommands()
         printer?.printAsync(commands)?.await()
@@ -523,5 +547,60 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
     val bluetoothAdapter = bluetoothManager?.adapter
     return bluetoothAdapter != null && bluetoothAdapter.isEnabled
+  }
+
+  // Determine if the connected printer is graphics-only (e.g., TSP100iii series)
+  private fun isGraphicsOnlyPrinter(): Boolean {
+    return try {
+      val modelStr = printer?.information?.model?.toString() ?: return false
+      // Use a case-insensitive check to avoid tight coupling to enum identifiers
+      val ms = modelStr.lowercase()
+      ms.contains("tsp100iii") || ms.contains("tsp1003")
+    } catch (e: Exception) {
+      false
+    }
+  }
+
+  // Render multiline text into a Bitmap suitable for printing
+  private fun createTextBitmap(text: String): Bitmap {
+    val width = 576 // 80mm paper standard printable width (pixels)
+    val padding = 20
+
+    val textPaint = TextPaint().apply {
+      isAntiAlias = true
+      color = Color.BLACK
+      textSize = 24f
+    }
+
+    val contentWidth = width - (padding * 2)
+
+    val layout: StaticLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      StaticLayout.Builder
+        .obtain(text, 0, text.length, textPaint, contentWidth)
+        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+        .setIncludePad(false)
+        .build()
+    } else {
+      @Suppress("DEPRECATION")
+      StaticLayout(
+        text,
+        textPaint,
+        contentWidth,
+        Layout.Alignment.ALIGN_NORMAL,
+        1.0f,
+        0.0f,
+        false
+      )
+    }
+
+    val height = (layout.height + padding * 2).coerceAtLeast(100)
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(Color.WHITE)
+    canvas.save()
+    canvas.translate(padding.toFloat(), padding.toFloat())
+    layout.draw(canvas)
+    canvas.restore()
+    return bitmap
   }
 }

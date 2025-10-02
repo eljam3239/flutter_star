@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:star_printer/star_printer.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io' show Platform;
+import 'package:flutter/services.dart' show rootBundle;
+import 'dart:convert' show base64Encode;
 import 'bluetooth_test_widget.dart';
 import 'wired_test_widget.dart';
 
@@ -85,6 +87,7 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
     _headerController = TextEditingController(text: _headerTitle);
     _checkAndRequestPermissions();
+    _loadFrogAsset();
   }
 
   @override
@@ -140,6 +143,22 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       _counter++;
     });
+  }
+
+  Future<void> _loadFrogAsset() async {
+    try {
+      // Load the PNG bytes for the frog image declared in pubspec
+      final bytes = await rootBundle.load('lib/frog pic.png');
+      // Base64-encode for transport to native; we explicitly mark as PNG
+      final b64 = base64Encode(bytes.buffer.asUint8List());
+      setState(() {
+        _logoBase64 = b64;
+        _imageWidthPx = 256; // a reasonable default width for 80mm paper
+      });
+      print('DEBUG: Loaded frog asset, bytes=${bytes.lengthInBytes}');
+    } catch (e) {
+      print('DEBUG: Failed to load frog asset: $e');
+    }
   }
 
   Future<void> _discoverPrinters() async {

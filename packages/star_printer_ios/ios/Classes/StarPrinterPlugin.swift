@@ -548,15 +548,15 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     return false
                 }()
 
-                // Build printer actions according to layout
+                // Build printer actions according to layout (follow Star sample structure)
                 let printerBuilder = StarXpandCommand.PrinterBuilder()
 
-                // 1) Header: draw as image for predictable layout (works for all models)
+                // 1) Header: print as image (simple UIImage like the sample)
                 if !headerTitle.isEmpty {
-                    if let rawHeaderImage = createTextImage(text: headerTitle, fontSize: headerFontSize, imageWidth: 576),
-                       let safeHeaderImage = ensureVisibleImage(rawHeaderImage, targetWidth: 576) {
-                        print("Printing header image at width=576 (safeguarded)")
-                        let param = StarXpandCommand.Printer.ImageParameter(image: safeHeaderImage, width: 576)
+                    if let headerImageRaw = createTextImage(text: headerTitle, fontSize: headerFontSize, imageWidth: 576),
+                       let headerFlat = flattenImage(headerImageRaw, targetWidth: 576) {
+                        print("Printing header image at width=576 (flattened UIImage)")
+                        let param = StarXpandCommand.Printer.ImageParameter(image: headerFlat, width: 576)
                         _ = printerBuilder
                             .styleAlignment(.center)
                             .actionPrintImage(param)
@@ -573,9 +573,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     if decoded == nil {
                         print("Small image: using placeholder logo (width=\(clampedWidth))")
                     }
-                    if let src = sourceImage, let safeSmall = ensureVisibleImage(src, targetWidth: clampedWidth) {
-                        print("Printing small image at width=\(clampedWidth) (safeguarded)")
-                        let param = StarXpandCommand.Printer.ImageParameter(image: safeSmall, width: clampedWidth)
+                    if let src = sourceImage, let flatSmall = flattenImage(src, targetWidth: clampedWidth) {
+                        print("Printing small image at width=\(clampedWidth) (flattened UIImage)")
+                        let param = StarXpandCommand.Printer.ImageParameter(image: flatSmall, width: clampedWidth)
                         _ = printerBuilder
                             .styleAlignment(.center)
                             .actionPrintImage(param)
@@ -600,7 +600,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     _ = printerBuilder.actionFeedLine(2)
                 }
 
-                _ = builder.addDocument(StarXpandCommand.DocumentBuilder().addPrinter(printerBuilder.actionCut(.partial)))
+                _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
+                                            .addPrinter(printerBuilder.actionCut(.partial)))
                 
                 let commands = builder.getCommands()
                 print("Generated commands: \(commands)")
@@ -883,8 +884,27 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         // White background
         ctx.setFillColor(UIColor.white.cgColor)
         ctx.fill(CGRect(origin: .zero, size: size))
-        // Draw the original image fitted
+
+        // Draw image as-is first
         image.draw(in: CGRect(origin: .zero, size: size))
+        // If it contains alpha, create a black silhouette using destinationIn blending
+        if let cg = image.cgImage {
+            let alphaInfo = cg.alphaInfo
+            let hasAlpha = (alphaInfo == .first || alphaInfo == .last || alphaInfo == .premultipliedFirst || alphaInfo == .premultipliedLast)
+            if hasAlpha {
+                // Paint black over the area defined by image's alpha
+                ctx.saveGState()
+                ctx.setBlendMode(.destinationIn)
+                image.draw(in: CGRect(origin: .zero, size: size)) // keep alpha as mask
+                ctx.restoreGState()
+                ctx.saveGState()
+                ctx.setBlendMode(.sourceAtop)
+                ctx.setFillColor(UIColor.black.cgColor)
+                ctx.fill(CGRect(origin: .zero, size: size))
+                ctx.restoreGState()
+            }
+        }
+
         // Add 1px black border
         ctx.setStrokeColor(UIColor.black.cgColor)
         ctx.setLineWidth(1)
@@ -895,6 +915,74 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         ctx.move(to: CGPoint(x: size.width, y: 0))
         ctx.addLine(to: CGPoint(x: 0, y: size.height))
         ctx.strokePath()
+        let out = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return out
+    }
+
+    // Convert image to high-contrast black/white using a simple luminance threshold (0..1)
+    private func binarizeImage(_ image: UIImage, threshold: CGFloat = 0.7) -> UIImage? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width
+        let height = cgImage.height
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bytesPerPixel = 1
+        let bytesPerRow = bytesPerPixel * width
+        var raw = [UInt8](repeating: 255, count: width * height)
+        guard let ctx = CGContext(data: &raw,
+                                  width: width,
+                                  height: height,
+                                  bitsPerComponent: 8,
+                                  bytesPerRow: bytesPerRow,
+                                  space: colorSpace,
+                                  bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
+        // Draw incoming on white
+        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        // Apply threshold (note: grayscale 0..255 where 0 is black)
+        let cutoff = UInt8(max(0, min(1, threshold)) * 255)
+        for i in 0..<(width*height) {
+            raw[i] = raw[i] < cutoff ? 0 : 255
+        }
+        guard let bwCg = ctx.makeImage() else { return nil }
+        return UIImage(cgImage: bwCg, scale: 1.0, orientation: .up)
+    }
+
+    // Normalize to 32-bit RGBA premultiplied for consistent UIImage encoding
+    private func normalizeToRGBA(_ image: UIImage) -> UIImage? {
+        let size = image.size
+        let width = Int(size.width)
+        let height = Int(size.height)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bytesPerPixel = 4
+        let bytesPerRow = bytesPerPixel * width
+        var raw = [UInt8](repeating: 0, count: width * height * bytesPerPixel)
+        guard let ctx = CGContext(data: &raw,
+                                  width: width,
+                                  height: height,
+                                  bitsPerComponent: 8,
+                                  bytesPerRow: bytesPerRow,
+                                  space: colorSpace,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else { return nil }
+        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: size.width, height: size.height))
+        image.draw(in: CGRect(origin: .zero, size: size))
+        guard let cg = ctx.makeImage() else { return nil }
+        return UIImage(cgImage: cg, scale: 1.0, orientation: .up)
+    }
+
+    // Flatten UIImage onto opaque white background at a given width (keeps aspect)
+    private func flattenImage(_ image: UIImage, targetWidth: Int) -> UIImage? {
+        let width = CGFloat(max(8, min(targetWidth, 576)))
+        let aspect = image.size.height / max(image.size.width, 1)
+        let height = max(8, width * aspect)
+        let size = CGSize(width: width, height: height)
+        UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
+        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.fill(CGRect(origin: .zero, size: size))
+        image.draw(in: CGRect(origin: .zero, size: size))
         let out = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         return out

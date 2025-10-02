@@ -336,28 +336,114 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       try {
         val builder = StarXpandCommandBuilder()
 
+        // Read structured layout from Dart
+        val settings = args["settings"] as? Map<*, *>
+        val layout = settings?.get("layout") as? Map<*, *>
+        val header = layout?.get("header") as? Map<*, *>
+        val imageBlock = layout?.get("image") as? Map<*, *>
+        val details = layout?.get("details") as? Map<*, *>
+
+        val headerTitle = (header?.get("title") as? String)?.trim().orEmpty()
+        val headerFontSize = (header?.get("fontSize") as? Number)?.toInt() ?: 32
+        val headerSpacing = (header?.get("spacingLines") as? Number)?.toInt() ?: 1
+
+        val smallImageBase64 = imageBlock?.get("base64") as? String
+        val smallImageWidth = (imageBlock?.get("width") as? Number)?.toInt() ?: 200
+        val smallImageSpacing = (imageBlock?.get("spacingLines") as? Number)?.toInt() ?: 1
+
+        val locationText = (details?.get("locationText") as? String)?.trim().orEmpty()
+        val dateText = (details?.get("date") as? String)?.trim().orEmpty()
+        val timeText = (details?.get("time") as? String)?.trim().orEmpty()
+        val cashier = (details?.get("cashier") as? String)?.trim().orEmpty()
+        val receiptNum = (details?.get("receiptNum") as? String)?.trim().orEmpty()
+        val lane = (details?.get("lane") as? String)?.trim().orEmpty()
+        val footer = (details?.get("footer") as? String)?.trim().orEmpty()
+
         val graphicsOnly = isGraphicsOnlyPrinter()
-        if (graphicsOnly) {
-          println("StarPrinter: Graphics-only printer detected – using actionPrintImage")
-          val bitmap = createTextBitmap(content)
-          builder.addDocument(
-            DocumentBuilder().addPrinter(
-              PrinterBuilder()
-                .actionPrintImage(ImageParameter(bitmap, 576))
-                .actionFeedLine(2)
-                .actionCut(CutType.Partial)
-            )
-          )
-        } else {
-          builder.addDocument(
-            DocumentBuilder().addPrinter(
-              PrinterBuilder()
-                .actionPrintText(content)
-                .actionFeedLine(2)
-                .actionCut(CutType.Partial)
-            )
-          )
+
+        val printerBuilder = PrinterBuilder()
+        val fullWidthMm = 72.0 // typical printable width for 80mm receipts
+
+        // 1) Header as image for consistent layout
+        if (headerTitle.isNotEmpty()) {
+          val headerBitmap = createHeaderBitmap(headerTitle, headerFontSize, 576)
+          if (headerBitmap != null) {
+            printerBuilder
+              .styleAlignment(Alignment.Center)
+              .actionPrintImage(ImageParameter(headerBitmap, 576))
+              .styleAlignment(Alignment.Left)
+            if (headerSpacing > 0) printerBuilder.actionFeedLine(headerSpacing)
+          }
         }
+
+        // 2) Small image centered
+        if (!smallImageBase64.isNullOrEmpty()) {
+          val clamped = smallImageWidth.coerceIn(8, 576)
+          val decoded = decodeBase64ToBitmap(smallImageBase64)
+          val src = decoded ?: createPlaceholderBitmap(clamped, clamped)
+          if (src != null) {
+            val flat = flattenBitmap(src, clamped)
+            val centered = centerOnCanvas(flat, 576)
+            if (centered != null) {
+              printerBuilder
+                .styleAlignment(Alignment.Center)
+                .actionPrintImage(ImageParameter(centered, 576))
+                .styleAlignment(Alignment.Left)
+              if (smallImageSpacing > 0) printerBuilder.actionFeedLine(smallImageSpacing)
+            }
+          }
+        }
+
+        // 2.5) Details block
+        val hasAnyDetails = listOf(locationText, dateText, timeText, cashier, receiptNum, lane, footer).any { it.isNotEmpty() }
+        if (hasAnyDetails) {
+          if (graphicsOnly) {
+            val detailsBmp = createDetailsBitmap(locationText, dateText, timeText, cashier, receiptNum, lane, footer, 576)
+            if (detailsBmp != null) {
+              printerBuilder.actionPrintImage(ImageParameter(detailsBmp, 576)).actionFeedLine(1)
+            }
+          } else {
+            // Centered location
+            if (locationText.isNotEmpty()) {
+              printerBuilder.styleAlignment(Alignment.Center).actionPrintText("$locationText\n").styleAlignment(Alignment.Left)
+              printerBuilder.actionFeedLine(1) // blank line
+            }
+            // Centered Tax Invoice
+            printerBuilder.styleAlignment(Alignment.Center).actionPrintText("Tax Invoice\n").styleAlignment(Alignment.Left)
+            // Left date/time, right cashier
+            val leftParam = TextParameter().setWidth(24)
+            val rightParam = TextParameter().setWidth(24, TextWidthParameter().setAlignment(TextAlignment.Right))
+            val left1 = listOf(dateText, timeText).filter { it.isNotEmpty() }.joinToString(" ")
+            val right1 = if (cashier.isNotEmpty()) "Cashier: $cashier" else ""
+            printerBuilder.actionPrintText(left1, leftParam)
+            printerBuilder.actionPrintText("$right1\n", rightParam)
+            // Left receipt no, right lane
+            val left2 = if (receiptNum.isNotEmpty()) "Receipt No: $receiptNum" else ""
+            val right2 = if (lane.isNotEmpty()) "Lane: $lane" else ""
+            printerBuilder.actionPrintText(left2, leftParam)
+            printerBuilder.actionPrintText("$right2\n", rightParam)
+            // Gap, ruled lines full width
+            printerBuilder.actionFeedLine(1)
+            printerBuilder.actionPrintRuledLine(RuledLineParameter(fullWidthMm))
+            printerBuilder.actionFeedLine(1)
+            printerBuilder.actionPrintRuledLine(RuledLineParameter(fullWidthMm))
+            printerBuilder.actionFeedLine(1)
+            // Footer centered
+            if (footer.isNotEmpty()) {
+              printerBuilder.styleAlignment(Alignment.Center).actionPrintText("$footer\n").styleAlignment(Alignment.Left)
+            }
+          }
+        }
+
+        // 3) Body/content
+        if (graphicsOnly) {
+          val bodyBitmap = createTextBitmap(content)
+          printerBuilder.actionPrintImage(ImageParameter(bodyBitmap, 576)).actionFeedLine(2)
+        } else {
+          printerBuilder.actionPrintText(content).actionFeedLine(2)
+        }
+
+        builder.addDocument(DocumentBuilder().addPrinter(printerBuilder.actionCut(CutType.Partial)))
         
         val commands = builder.getCommands()
         printer?.printAsync(commands)?.await()
@@ -602,5 +688,239 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     layout.draw(canvas)
     canvas.restore()
     return bitmap
+  }
+
+  // Render centered header text to a bitmap of given width
+  private fun createHeaderBitmap(text: String, fontSize: Int, width: Int): Bitmap? {
+    val w = width.coerceAtMost(576)
+    val padding = 20
+    val textPaint = TextPaint().apply {
+      isAntiAlias = true
+      color = Color.BLACK
+      textSize = fontSize.toFloat()
+    }
+    val contentWidth = w - (padding * 2)
+    val layout: StaticLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      StaticLayout.Builder
+        .obtain(text, 0, text.length, textPaint, contentWidth)
+        .setAlignment(Layout.Alignment.ALIGN_CENTER)
+        .setIncludePad(false)
+        .build()
+    } else {
+      @Suppress("DEPRECATION")
+      StaticLayout(text, textPaint, contentWidth, Layout.Alignment.ALIGN_CENTER, 1.0f, 0.0f, false)
+    }
+    val height = (layout.height + padding * 2).coerceAtLeast(100)
+    val bitmap = Bitmap.createBitmap(w, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(Color.WHITE)
+    canvas.save()
+    canvas.translate(padding.toFloat(), padding.toFloat())
+    layout.draw(canvas)
+    canvas.restore()
+    return bitmap
+  }
+
+  // Create a structured details block bitmap matching iOS layout
+  private fun createDetailsBitmap(
+    locationText: String,
+    dateText: String,
+    timeText: String,
+    cashier: String,
+    receiptNum: String,
+    lane: String,
+    footer: String,
+    canvasWidth: Int
+  ): Bitmap? {
+    val width = canvasWidth.coerceIn(8, 576)
+    val padding = 20
+
+    val titlePaint = TextPaint().apply {
+      isAntiAlias = true
+      color = Color.BLACK
+      textSize = 28f
+    }
+    val bodyPaint = TextPaint().apply {
+      isAntiAlias = true
+      color = Color.BLACK
+      textSize = 22f
+    }
+
+    val contentWidth = width - padding * 2
+
+    fun buildLayout(text: String, paint: TextPaint, align: Layout.Alignment): StaticLayout {
+      return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        StaticLayout.Builder
+          .obtain(text, 0, text.length, paint, contentWidth)
+          .setAlignment(align)
+          .setIncludePad(false)
+          .build()
+      } else {
+        @Suppress("DEPRECATION")
+        StaticLayout(text, paint, contentWidth, align, 1.0f, 0.0f, false)
+      }
+    }
+
+    // Build layouts (no lines yet)
+    val layouts = mutableListOf<StaticLayout>()
+    var totalHeight = 0
+
+    if (locationText.isNotEmpty()) {
+      val loc = buildLayout(locationText, titlePaint, Layout.Alignment.ALIGN_CENTER)
+      layouts.add(loc)
+      totalHeight += loc.height
+      // blank line spacer
+      val spacer = buildLayout(" ", bodyPaint, Layout.Alignment.ALIGN_NORMAL)
+      layouts.add(spacer)
+      totalHeight += spacer.height
+    }
+
+    val tax = buildLayout("Tax Invoice", titlePaint, Layout.Alignment.ALIGN_CENTER)
+    layouts.add(tax)
+    totalHeight += tax.height
+
+    // Two column helper: left and right each 24 char width equivalent
+    fun twoCol(left: String, right: String): StaticLayout {
+      val leftText = left
+      val rightText = right
+      // crude two-column by spacing; final print uses image so mono spacing is acceptable
+      val spaces = 40
+      val combined = if (rightText.isNotEmpty()) {
+        (leftText + " ".repeat(spaces)).take(spaces) + rightText
+      } else leftText
+      return buildLayout(combined, bodyPaint, Layout.Alignment.ALIGN_NORMAL)
+    }
+
+    val left1 = listOf(dateText, timeText).filter { it.isNotEmpty() }.joinToString(" ")
+    val right1 = if (cashier.isNotEmpty()) "Cashier: $cashier" else ""
+    val row1 = twoCol(left1, right1)
+    layouts.add(row1)
+    totalHeight += row1.height
+
+    val left2 = if (receiptNum.isNotEmpty()) "Receipt No: $receiptNum" else ""
+    val right2 = if (lane.isNotEmpty()) "Lane: $lane" else ""
+    val row2 = twoCol(left2, right2)
+    layouts.add(row2)
+    totalHeight += row2.height
+
+    // Reserve space for ruled lines and gaps
+    val gapBeforeLinesPx = (bodyPaint.textSize).toInt() // approx one text line
+    val lineThicknessPx = 4
+    val interLineGapPx = (bodyPaint.textSize * 0.6f).toInt().coerceAtLeast(8)
+    val gapAfterLinesPx = (bodyPaint.textSize * 0.6f).toInt().coerceAtLeast(8)
+
+    totalHeight += gapBeforeLinesPx + lineThicknessPx + interLineGapPx + lineThicknessPx + gapAfterLinesPx
+
+    val footerLayout = if (footer.isNotEmpty()) buildLayout(footer, bodyPaint, Layout.Alignment.ALIGN_CENTER) else null
+    if (footerLayout != null) {
+      totalHeight += footerLayout.height
+    }
+
+    // Draw to bitmap
+    val height = totalHeight + padding * 2
+    val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    canvas.drawColor(Color.WHITE)
+    var y = padding
+
+    // Draw text layouts first
+    for (layout in layouts) {
+      canvas.save()
+      canvas.translate(padding.toFloat(), y.toFloat())
+      layout.draw(canvas)
+      canvas.restore()
+      y += layout.height
+    }
+
+    // Draw gaps and ruled lines
+    y += gapBeforeLinesPx
+    val leftX = padding
+    val rightX = width - padding
+    val linePaint = android.graphics.Paint().apply {
+      color = Color.BLACK
+      style = android.graphics.Paint.Style.FILL
+      isAntiAlias = false
+    }
+    // First line
+    canvas.drawRect(
+      leftX.toFloat(),
+      y.toFloat(),
+      rightX.toFloat(),
+      (y + lineThicknessPx).toFloat(),
+      linePaint
+    )
+    y += lineThicknessPx + interLineGapPx
+    // Second line
+    canvas.drawRect(
+      leftX.toFloat(),
+      y.toFloat(),
+      rightX.toFloat(),
+      (y + lineThicknessPx).toFloat(),
+      linePaint
+    )
+    y += lineThicknessPx + gapAfterLinesPx
+
+    // Footer centered if present
+    if (footerLayout != null) {
+      canvas.save()
+      canvas.translate(padding.toFloat(), y.toFloat())
+      footerLayout.draw(canvas)
+      canvas.restore()
+      y += footerLayout.height
+    }
+
+    return bmp
+  }
+
+  // Create a placeholder bitmap (solid black square)
+  private fun createPlaceholderBitmap(width: Int, height: Int): Bitmap {
+    val w = width.coerceIn(8, 576)
+    val h = height.coerceAtLeast(8)
+    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    canvas.drawColor(Color.BLACK)
+    return bmp
+  }
+
+  // Flatten bitmap onto white background at target width (keep aspect)
+  private fun flattenBitmap(src: Bitmap, targetWidth: Int): Bitmap {
+    val tw = targetWidth.coerceIn(8, 576)
+    val aspect = src.height.toFloat() / src.width.toFloat().coerceAtLeast(1f)
+    val th = (tw * aspect).toInt().coerceAtLeast(8)
+    val out = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(out)
+    canvas.drawColor(Color.WHITE)
+    val dst = android.graphics.Rect(0, 0, tw, th)
+    canvas.drawBitmap(src, null, dst, null)
+    return out
+  }
+
+  // Center a bitmap on a full-width canvas to force horizontal centering
+  private fun centerOnCanvas(src: Bitmap, canvasWidth: Int): Bitmap {
+    val cw = canvasWidth.coerceIn(8, 576)
+    val aspect = src.height.toFloat() / src.width.toFloat().coerceAtLeast(1f)
+    val targetW = src.width.coerceAtMost(cw)
+    val targetH = (targetW * aspect).toInt().coerceAtLeast(8)
+    val out = Bitmap.createBitmap(cw, targetH, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(out)
+    canvas.drawColor(Color.WHITE)
+    val left = (cw - targetW) / 2
+    val dst = android.graphics.Rect(left, 0, left + targetW, targetH)
+    canvas.drawBitmap(src, null, dst, null)
+    return out
+  }
+
+  // Decode Base64 (with optional data URI) to Bitmap
+  private fun decodeBase64ToBitmap(b64: String?): Bitmap? {
+    if (b64.isNullOrEmpty()) return null
+    return try {
+      val trimmed = b64.trim()
+      val payload = if (trimmed.startsWith("data:image")) trimmed.substringAfter(",") else trimmed
+      val clean = payload.replace("\n", "").replace("\r", "").replace(" ", "")
+      val bytes = android.util.Base64.decode(clean, android.util.Base64.DEFAULT)
+      android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    } catch (e: Exception) {
+      null
+    }
   }
 }

@@ -8,7 +8,8 @@ plugins {
 android {
     namespace = "com.example.test_star"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Use the highest NDK version required by dependencies
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

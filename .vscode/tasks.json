@@ -1,0 +1,36 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Flutter run Android debug",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"run",
+				"-d",
+				"android",
+				"-v"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$flutter-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Flutter build apk",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"build",
+				"apk",
+				"-v"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$flutter-build"
+			],
+			"group": "build"
+		}
+	]
+}

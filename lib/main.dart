@@ -77,13 +77,13 @@ class _MyHomePageState extends State<MyHomePage> {
   int _imageSpacingLines = 1; // blank lines after image
   late final TextEditingController _headerController;
   // Receipt detail fields
-  String _locationText = '';
-  String _date = '';
-  String _time = '';
-  String _cashier = '';
-  String _receiptNum = '';
-  String _lane = '';
-  String _footer = '';
+  String _locationText = '67 LeBron James avenue, Cleveland, OH';
+  String _date = '02/10/2025';
+  String _time = '2:39 PM';
+  String _cashier = 'Eli';
+  String _receiptNum = '67676969';
+  String _lane = '1';
+  String _footer = 'Thank you for shopping with us! Have a nice day!';
   late final TextEditingController _locationController;
   late final TextEditingController _dateController;
   late final TextEditingController _timeController;

@@ -76,6 +76,21 @@ class _MyHomePageState extends State<MyHomePage> {
   int _imageWidthPx = 200; // width in pixels for the small image
   int _imageSpacingLines = 1; // blank lines after image
   late final TextEditingController _headerController;
+  // Receipt detail fields
+  String _locationText = '';
+  String _date = '';
+  String _time = '';
+  String _cashier = '';
+  String _receiptNum = '';
+  String _lane = '';
+  String _footer = '';
+  late final TextEditingController _locationController;
+  late final TextEditingController _dateController;
+  late final TextEditingController _timeController;
+  late final TextEditingController _cashierController;
+  late final TextEditingController _receiptNumController;
+  late final TextEditingController _laneController;
+  late final TextEditingController _footerController;
 
   // A tiny 32x32 black square PNG as a sample logo (base64)
   // You can replace this with your own base64-encoded PNG at runtime
@@ -86,6 +101,13 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     _headerController = TextEditingController(text: _headerTitle);
+    _locationController = TextEditingController(text: _locationText);
+    _dateController = TextEditingController(text: _date);
+    _timeController = TextEditingController(text: _time);
+    _cashierController = TextEditingController(text: _cashier);
+    _receiptNumController = TextEditingController(text: _receiptNum);
+    _laneController = TextEditingController(text: _lane);
+    _footerController = TextEditingController(text: _footer);
     _checkAndRequestPermissions();
     _loadFrogAsset();
   }
@@ -93,6 +115,13 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void dispose() {
     _headerController.dispose();
+    _locationController.dispose();
+    _dateController.dispose();
+    _timeController.dispose();
+    _cashierController.dispose();
+    _receiptNumController.dispose();
+    _laneController.dispose();
+    _footerController.dispose();
     super.dispose();
   }
 
@@ -316,6 +345,15 @@ class _MyHomePageState extends State<MyHomePage> {
             'fontSize': _headerFontSize,
             'spacingLines': _headerSpacingLines,
           },
+              'details': {
+                'locationText': _locationText,
+                'date': _date,
+                'time': _time,
+                'cashier': _cashier,
+                'receiptNum': _receiptNum,
+                'lane': _lane,
+                'footer': _footer,
+              },
           'image': _logoBase64 == null
               ? null
               : {
@@ -678,6 +716,92 @@ Print Test
                         ],
                       ),
                     ],
+                    const SizedBox(height: 16),
+                    Text(
+                      'Receipt Details',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _locationController,
+                      decoration: const InputDecoration(
+                        labelText: 'Location Text (centered)',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (v) => setState(() => _locationText = v),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _dateController,
+                          decoration: const InputDecoration(
+                            labelText: 'Date',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (v) => setState(() => _date = v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _timeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Time',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (v) => setState(() => _time = v),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _cashierController,
+                          decoration: const InputDecoration(
+                            labelText: 'Cashier',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (v) => setState(() => _cashier = v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _receiptNumController,
+                          decoration: const InputDecoration(
+                            labelText: 'Receipt No',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (v) => setState(() => _receiptNum = v),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _laneController,
+                          decoration: const InputDecoration(
+                            labelText: 'Lane',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (v) => setState(() => _lane = v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _footerController,
+                          decoration: const InputDecoration(
+                            labelText: 'Footer',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (v) => setState(() => _footer = v),
+                        ),
+                      ),
+                    ]),
                     const SizedBox(height: 16),
                     Text('Connection Status: ${_isConnected ? "Connected" : "Disconnected"}'),
                     const SizedBox(height: 8),

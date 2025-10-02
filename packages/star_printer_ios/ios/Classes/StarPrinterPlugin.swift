@@ -499,16 +499,25 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         // Read optional layout settings coming from Dart
         let settings = args["settings"] as? [String: Any]
         let layout = settings?["layout"] as? [String: Any]
-        let header = layout?["header"] as? [String: Any]
-        let imageBlock = layout?["image"] as? [String: Any]
+    let header = layout?["header"] as? [String: Any]
+    let imageBlock = layout?["image"] as? [String: Any]
+    let details = layout?["details"] as? [String: Any]
 
         // Defaults
         let headerTitle = (header?["title"] as? String) ?? ""
         let headerFontSize = CGFloat((header?["fontSize"] as? Int) ?? 32)
         let headerSpacing = Int((header?["spacingLines"] as? Int) ?? 1)
-        let smallImageBase64 = imageBlock?["base64"] as? String
+    let smallImageBase64 = imageBlock?["base64"] as? String
         let smallImageWidth = (imageBlock?["width"] as? Int) ?? 200
         let smallImageSpacing = (imageBlock?["spacingLines"] as? Int) ?? 1
+    // Details
+    let locationText = (details?["locationText"] as? String) ?? ""
+    let dateText = (details?["date"] as? String) ?? ""
+    let timeText = (details?["time"] as? String) ?? ""
+    let cashier = (details?["cashier"] as? String) ?? ""
+    let receiptNum = (details?["receiptNum"] as? String) ?? ""
+    let lane = (details?["lane"] as? String) ?? ""
+    let footer = (details?["footer"] as? String) ?? ""
 
         print("Printer is connected, attempting to print with structured layout...")
         
@@ -550,6 +559,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
 
                 // Build printer actions according to layout (follow Star sample structure)
                 let printerBuilder = StarXpandCommand.PrinterBuilder()
+                // Assume 80mm printers (tsp100/mC-Print3) => ~72mm printable. Can be refined per model.
+                let fullWidthMm: Double = 72.0
 
                 // 1) Header: print as image (simple UIImage like the sample)
                 if !headerTitle.isEmpty {
@@ -583,6 +594,65 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if smallImageSpacing > 0 { _ = printerBuilder.actionFeedLine(smallImageSpacing) }
                     } else {
                         print("Small image skipped: neither base64 decode nor placeholder succeeded")
+                    }
+                }
+
+                // 2.5) Details block below the image
+                let hasAnyDetails = !locationText.isEmpty || !dateText.isEmpty || !timeText.isEmpty || !cashier.isEmpty || !receiptNum.isEmpty || !lane.isEmpty || !footer.isEmpty
+                if hasAnyDetails {
+                    if graphicsOnly {
+                        if let detailsImage = createDetailsImage(location: locationText,
+                                                                 date: dateText,
+                                                                 time: timeText,
+                                                                 cashier: cashier,
+                                                                 receiptNum: receiptNum,
+                                                                 lane: lane,
+                                                                 footer: footer,
+                                                                 imageWidth: 576) {
+                            let param = StarXpandCommand.Printer.ImageParameter(image: detailsImage, width: 576)
+                            _ = printerBuilder.actionPrintImage(param)
+                            _ = printerBuilder.actionFeedLine(1)
+                        }
+                    } else {
+                        // Centered location
+                        if !locationText.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(locationText)\n")
+                                .styleAlignment(.left)
+                            _ = printerBuilder.actionFeedLine(1) // blank line
+                        }
+                        // Centered Tax Invoice
+                        _ = printerBuilder
+                            .styleAlignment(.center)
+                            .actionPrintText("Tax Invoice\n")
+                            .styleAlignment(.left)
+                        // Line: left date/time, right cashier
+                        let left1 = "\(dateText) \(timeText)"
+                        let right1 = cashier.isEmpty ? "" : "Cashier: \(cashier)"
+                        let leftParam = StarXpandCommand.Printer.TextParameter().setWidth(24)
+                        let rightParam = StarXpandCommand.Printer.TextParameter().setWidth(24, StarXpandCommand.Printer.TextWidthParameter().setAlignment(.right))
+                        _ = printerBuilder.actionPrintText(left1, leftParam)
+                        _ = printerBuilder.actionPrintText("\(right1)\n", rightParam)
+                        // Line: left receipt no, right lane
+                        let left2 = receiptNum.isEmpty ? "" : "Receipt No: \(receiptNum)"
+                        let right2 = lane.isEmpty ? "" : "Lane: \(lane)"
+                        _ = printerBuilder.actionPrintText(left2, leftParam)
+                        _ = printerBuilder.actionPrintText("\(right2)\n", rightParam)
+                        // Add a small gap before the top ruled line
+                        _ = printerBuilder.actionFeedLine(1)
+                        // Ruled line across full printable width, blank, then another
+                        _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
+                        _ = printerBuilder.actionFeedLine(1)
+                        _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
+                        _ = printerBuilder.actionFeedLine(1)
+                        // Footer (centered) if present
+                        if !footer.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(footer)\n")
+                                .styleAlignment(.left)
+                        }
                     }
                 }
 
@@ -811,6 +881,97 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         }
         UIGraphicsEndImageContext()
         return image
+    }
+
+    // Helper: render the details block into an image for graphics-only printers
+    private func createDetailsImage(location: String, date: String, time: String, cashier: String, receiptNum: String, lane: String, footer: String, imageWidth: CGFloat = 576) -> UIImage? {
+        let font = UIFont.systemFont(ofSize: 22)
+        let smallFont = UIFont.systemFont(ofSize: 20)
+        let backgroundColor = UIColor.white
+        let textColor = UIColor.black
+
+        let paraCenter = NSMutableParagraphStyle(); paraCenter.alignment = .center
+        let paraLeft = NSMutableParagraphStyle(); paraLeft.alignment = .left
+        let paraRight = NSMutableParagraphStyle(); paraRight.alignment = .right
+
+        var lines: [(String, UIFont, NSMutableParagraphStyle)] = []
+        if !location.isEmpty { lines.append((location, font, paraCenter)) }
+        lines.append(("", smallFont, paraLeft)) // blank line
+        lines.append(("Tax Invoice", font, paraCenter))
+        // date time (left) and cashier (right) on same line -> render via two columns
+        let left1 = "\(date) \(time)"
+        let right1 = cashier.isEmpty ? "" : "Cashier: \(cashier)"
+        let left2 = receiptNum.isEmpty ? "" : "Receipt No: \(receiptNum)"
+        let right2 = lane.isEmpty ? "" : "Lane: \(lane)"
+
+        // Measure height
+        var height: CGFloat = 0
+        let width = imageWidth
+        for (text, f, para) in lines {
+            let attrs: [NSAttributedString.Key: Any] = [.font: f, .foregroundColor: textColor, .paragraphStyle: para]
+            let rect = (text as NSString).boundingRect(with: CGSize(width: width - 40, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+            height += rect.height + 8
+        }
+        // Space for two-column lines and ruled lines (with an extra gap before first rule)
+        height += 2 * (smallFont.lineHeight + 10)
+        height += 10 // extra gap before first rule
+        height += 2 * 2 + 2 * 10 // two 2px rules + spacing
+        if !footer.isEmpty {
+            let attrs: [NSAttributedString.Key: Any] = [.font: smallFont, .foregroundColor: textColor, .paragraphStyle: paraCenter]
+            let rect = (footer as NSString).boundingRect(with: CGSize(width: width - 40, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+            height += rect.height + 8
+        }
+
+        let size = CGSize(width: width, height: max(120, height + 20))
+        UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
+        ctx.setFillColor(backgroundColor.cgColor)
+        ctx.fill(CGRect(origin: .zero, size: size))
+
+        var y: CGFloat = 10
+        for (text, f, para) in lines {
+            let attrs: [NSAttributedString.Key: Any] = [.font: f, .foregroundColor: textColor, .paragraphStyle: para]
+            let rect = (text as NSString).boundingRect(with: CGSize(width: width - 24, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+            let drawRect = CGRect(x: 12, y: y, width: width - 24, height: rect.height)
+            (text as NSString).draw(in: drawRect, withAttributes: attrs)
+            y += rect.height + 8
+        }
+
+        // Two-column line 1
+        let colWidth = (width - 24) / 2
+        let leftRect1 = CGRect(x: 12, y: y, width: colWidth, height: smallFont.lineHeight + 2)
+        let rightRect1 = CGRect(x: 12 + colWidth, y: y, width: colWidth, height: smallFont.lineHeight + 2)
+        (left1 as NSString).draw(in: leftRect1, withAttributes: [.font: smallFont, .foregroundColor: textColor, .paragraphStyle: paraLeft])
+        (right1 as NSString).draw(in: rightRect1, withAttributes: [.font: smallFont, .foregroundColor: textColor, .paragraphStyle: paraRight])
+        y += smallFont.lineHeight + 10
+
+        // Two-column line 2
+        let leftRect2 = CGRect(x: 12, y: y, width: colWidth, height: smallFont.lineHeight + 2)
+        let rightRect2 = CGRect(x: 12 + colWidth, y: y, width: colWidth, height: smallFont.lineHeight + 2)
+        (left2 as NSString).draw(in: leftRect2, withAttributes: [.font: smallFont, .foregroundColor: textColor, .paragraphStyle: paraLeft])
+        (right2 as NSString).draw(in: rightRect2, withAttributes: [.font: smallFont, .foregroundColor: textColor, .paragraphStyle: paraRight])
+        y += smallFont.lineHeight + 10
+
+        // Extra gap before first rule
+        y += 10
+        // Ruled line (2px) full width edge-to-edge, blank, ruled line
+        ctx.setFillColor(UIColor.black.cgColor)
+        ctx.fill(CGRect(x: 0, y: y, width: width, height: 2))
+        y += 2 + 10
+        ctx.fill(CGRect(x: 0, y: y, width: width, height: 2))
+        y += 2 + 10
+
+        if !footer.isEmpty {
+            let attrs: [NSAttributedString.Key: Any] = [.font: smallFont, .foregroundColor: textColor, .paragraphStyle: paraCenter]
+            let rect = (footer as NSString).boundingRect(with: CGSize(width: width - 40, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+            let drawRect = CGRect(x: 20, y: y, width: width - 40, height: rect.height)
+            (footer as NSString).draw(in: drawRect, withAttributes: attrs)
+            y += rect.height + 8
+        }
+
+        let img = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return img
     }
 
     // Helper: decode base64 PNG/JPEG (supports data URIs and whitespace)

@@ -585,8 +585,11 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         print("Small image: using placeholder logo (width=\(clampedWidth))")
                     }
                     if let src = sourceImage, let flatSmall = flattenImage(src, targetWidth: clampedWidth) {
-                        print("Printing small image at width=\(clampedWidth) (flattened UIImage)")
-                        let param = StarXpandCommand.Printer.ImageParameter(image: flatSmall, width: clampedWidth)
+                        // Center the small image on a full-width canvas to ensure horizontal centering on all models
+                        let canvasWidth = 576
+                        let centered = centerOnCanvas(image: flatSmall, canvasWidth: canvasWidth) ?? flatSmall
+                        print("Printing small image centered on canvas (target=\(clampedWidth), canvas=\(canvasWidth))")
+                        let param = StarXpandCommand.Printer.ImageParameter(image: centered, width: canvasWidth)
                         _ = printerBuilder
                             .styleAlignment(.center)
                             .actionPrintImage(param)
@@ -1144,6 +1147,24 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         ctx.setFillColor(UIColor.white.cgColor)
         ctx.fill(CGRect(origin: .zero, size: size))
         image.draw(in: CGRect(origin: .zero, size: size))
+        let out = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return out
+    }
+
+    // Center an image on a full-width canvas to force horizontal centering for graphics-only printers
+    private func centerOnCanvas(image: UIImage, canvasWidth: Int) -> UIImage? {
+        let width = CGFloat(max(8, min(canvasWidth, 576)))
+        let aspect = image.size.height / max(image.size.width, 1)
+        let targetW = min(image.size.width, width)
+        let targetH = targetW * aspect
+        let size = CGSize(width: width, height: targetH)
+        UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
+        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.fill(CGRect(origin: .zero, size: size))
+        let x = (width - targetW) / 2
+        image.draw(in: CGRect(x: x, y: 0, width: targetW, height: targetH))
         let out = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         return out

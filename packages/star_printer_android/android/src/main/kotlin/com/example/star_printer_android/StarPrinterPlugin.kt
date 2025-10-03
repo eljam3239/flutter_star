@@ -399,7 +399,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         val hasAnyDetails = listOf(locationText, dateText, timeText, cashier, receiptNum, lane, footer).any { it.isNotEmpty() }
         if (hasAnyDetails) {
           if (graphicsOnly) {
-            val detailsBmp = createDetailsBitmap(locationText, dateText, timeText, cashier, receiptNum, lane, footer, 576)
+            val detailsBmp = createDetailsBitmap(locationText, dateText, timeText, cashier, receiptNum, lane, footer, items, 576)
             if (detailsBmp != null) {
               printerBuilder.actionPrintImage(ImageParameter(detailsBmp, 576)).actionFeedLine(1)
             }
@@ -752,6 +752,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     receiptNum: String,
     lane: String,
     footer: String,
+    items: List<*>?,
     canvasWidth: Int
   ): Bitmap? {
     val width = canvasWidth.coerceIn(8, 576)
@@ -825,13 +826,32 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     layouts.add(row2)
     totalHeight += row2.height
 
-    // Reserve space for ruled lines and gaps
-    val gapBeforeLinesPx = (bodyPaint.textSize).toInt() // approx one text line
-    val lineThicknessPx = 4
-    val interLineGapPx = (bodyPaint.textSize * 0.6f).toInt().coerceAtLeast(8)
-    val gapAfterLinesPx = (bodyPaint.textSize * 0.6f).toInt().coerceAtLeast(8)
+    // Prepare items (if any) for graphics-only rendering
+    val parsedItems = mutableListOf<Pair<String,String>>()
+    items?.mapNotNull { it as? Map<*, *> }?.forEach { item ->
+      val qty = (item["quantity"] as? String)?.trim().orEmpty().ifEmpty { "1" }
+      val name = (item["name"] as? String)?.trim().orEmpty().ifEmpty { "Item" }
+      val priceRaw = (item["price"] as? String)?.trim().orEmpty().ifEmpty { "0.00" }
+      val repeatStr = (item["repeat"] as? String)?.trim().orEmpty()
+      val repeatN = repeatStr.toIntOrNull() ?: 1
+      val leftText = "$qty x $name"
+      val rightText = "$$priceRaw"
+      repeat(repeatN.coerceAtLeast(1).coerceAtMost(200)) {
+        parsedItems.add(Pair(leftText, rightText))
+      }
+    }
 
-    totalHeight += gapBeforeLinesPx + lineThicknessPx + interLineGapPx + lineThicknessPx + gapAfterLinesPx
+    // Reserve space: gap + first line + items + second line + gap after second line
+    val gapBeforeLinesPx = (bodyPaint.textSize).toInt()
+    val lineThicknessPx = 4
+    val interItemLineSpacing = 8
+    val gapAfterSecondLinePx = (bodyPaint.textSize * 0.6f).toInt().coerceAtLeast(8)
+    var itemsBlockHeight = 0
+    if (parsedItems.isNotEmpty()) {
+      val lineHeight = (bodyPaint.textSize + 4).toInt()
+      itemsBlockHeight = parsedItems.size * (lineHeight + interItemLineSpacing)
+    }
+    totalHeight += gapBeforeLinesPx + lineThicknessPx + itemsBlockHeight + lineThicknessPx + gapAfterSecondLinePx
 
     val footerLayout = if (footer.isNotEmpty()) buildLayout(footer, bodyPaint, Layout.Alignment.ALIGN_CENTER) else null
     if (footerLayout != null) {
@@ -854,7 +874,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       y += layout.height
     }
 
-    // Draw gaps and ruled lines
+    // Draw gap then first ruled line
     y += gapBeforeLinesPx
     val leftX = padding
     val rightX = width - padding
@@ -863,24 +883,45 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       style = android.graphics.Paint.Style.FILL
       isAntiAlias = false
     }
-    // First line
-    canvas.drawRect(
-      leftX.toFloat(),
-      y.toFloat(),
-      rightX.toFloat(),
-      (y + lineThicknessPx).toFloat(),
-      linePaint
-    )
-    y += lineThicknessPx + interLineGapPx
-    // Second line
-    canvas.drawRect(
-      leftX.toFloat(),
-      y.toFloat(),
-      rightX.toFloat(),
-      (y + lineThicknessPx).toFloat(),
-      linePaint
-    )
-    y += lineThicknessPx + gapAfterLinesPx
+    canvas.drawRect(leftX.toFloat(), y.toFloat(), rightX.toFloat(), (y + lineThicknessPx).toFloat(), linePaint)
+    y += lineThicknessPx + 10
+
+    // Draw items if present (left/right columns)
+    if (parsedItems.isNotEmpty()) {
+      val availableWidth = (width - padding * 2)
+      val leftColWidth = (availableWidth * 0.65).toInt()
+      val rightColWidth = availableWidth - leftColWidth
+      val leftXText = padding
+      val rightXText = padding + leftColWidth
+      val textPaintLeft = TextPaint(bodyPaint)
+      val textPaintRight = TextPaint(bodyPaint)
+      textPaintRight.textAlign = android.graphics.Paint.Align.RIGHT
+      parsedItems.forEach { (l, r) ->
+        // Left text clipped to column
+        val leftLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+          StaticLayout.Builder.obtain(l, 0, l.length, textPaintLeft, leftColWidth)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setIncludePad(false)
+            .build()
+        } else {
+          @Suppress("DEPRECATION")
+          StaticLayout(l, textPaintLeft, leftColWidth, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0f, false)
+        }
+        canvas.save()
+        canvas.translate(leftXText.toFloat(), y.toFloat())
+        leftLayout.draw(canvas)
+        canvas.restore()
+        // Right text (single line) aligned right
+        val priceY = y + bodyPaint.textSize
+        canvas.drawText(r, (rightXText + rightColWidth).toFloat(), priceY - 6, textPaintRight)
+        val lineH = leftLayout.height.coerceAtLeast(bodyPaint.textSize.toInt()) + interItemLineSpacing
+        y += lineH
+      }
+    }
+
+    // Second ruled line
+    canvas.drawRect(leftX.toFloat(), y.toFloat(), rightX.toFloat(), (y + lineThicknessPx).toFloat(), linePaint)
+    y += lineThicknessPx + gapAfterSecondLinePx
 
     // Footer centered if present
     if (footerLayout != null) {

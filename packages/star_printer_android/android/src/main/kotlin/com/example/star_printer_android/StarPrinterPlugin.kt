@@ -342,6 +342,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         val header = layout?.get("header") as? Map<*, *>
         val imageBlock = layout?.get("image") as? Map<*, *>
         val details = layout?.get("details") as? Map<*, *>
+  val items = layout?.get("items") as? List<*>
 
         val headerTitle = (header?.get("title") as? String)?.trim().orEmpty()
         val headerFontSize = (header?.get("fontSize") as? Number)?.toInt() ?: 32
@@ -394,7 +395,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           }
         }
 
-        // 2.5) Details block
+  // 2.5) Details block (we will later inject items between ruled lines)
         val hasAnyDetails = listOf(locationText, dateText, timeText, cashier, receiptNum, lane, footer).any { it.isNotEmpty() }
         if (hasAnyDetails) {
           if (graphicsOnly) {
@@ -422,10 +423,31 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
             val right2 = if (lane.isNotEmpty()) "Lane: $lane" else ""
             printerBuilder.actionPrintText(left2, leftParam)
             printerBuilder.actionPrintText("$right2\n", rightParam)
-            // Gap, ruled lines full width
+            // Gap then first ruled line
             printerBuilder.actionFeedLine(1)
             printerBuilder.actionPrintRuledLine(RuledLineParameter(fullWidthMm))
-            printerBuilder.actionFeedLine(1)
+
+            // Inject item lines (text path only here). Each item: "Q x Name" left, price right.
+            val itemList = items?.mapNotNull { it as? Map<*, *> } ?: emptyList()
+            if (itemList.isNotEmpty()) {
+              val leftParam = TextParameter().setWidth(30) // more left width for description
+              val rightParam = TextParameter().setWidth(18, TextWidthParameter().setAlignment(TextAlignment.Right))
+              for (item in itemList) {
+                val qty = (item["quantity"] as? String)?.trim().orEmpty()
+                val name = (item["name"] as? String)?.trim().orEmpty()
+                val price = (item["price"] as? String)?.trim().orEmpty()
+                val repeatStr = (item["repeat"] as? String)?.trim().orEmpty()
+                val repeatN = repeatStr.toIntOrNull() ?: 1
+                val leftText = listOf(qty.ifEmpty { "1" }, "x", name.ifEmpty { "Item" }).joinToString(" ")
+                val rightText = if (price.isNotEmpty()) "$$price" else "$0.00"
+                repeat(repeatN.coerceAtLeast(1).coerceAtMost(200)) {
+                  printerBuilder.actionPrintText(leftText, leftParam)
+                  printerBuilder.actionPrintText("$rightText\n", rightParam)
+                }
+              }
+            }
+
+            // Second ruled line after items
             printerBuilder.actionPrintRuledLine(RuledLineParameter(fullWidthMm))
             printerBuilder.actionFeedLine(1)
             // Footer centered

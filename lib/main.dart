@@ -84,6 +84,11 @@ class _MyHomePageState extends State<MyHomePage> {
   String _receiptNum = '67676969';
   String _lane = '1';
   String _footer = 'Thank you for shopping with us! Have a nice day!';
+  // Single item input (repeat pattern)
+  String _itemQuantity = '1';
+  String _itemName = 'Orange';
+  String _itemPrice = '5.00';
+  String _itemRepeat = '3';
   late final TextEditingController _locationController;
   late final TextEditingController _dateController;
   late final TextEditingController _timeController;
@@ -91,6 +96,10 @@ class _MyHomePageState extends State<MyHomePage> {
   late final TextEditingController _receiptNumController;
   late final TextEditingController _laneController;
   late final TextEditingController _footerController;
+  late final TextEditingController _itemQuantityController;
+  late final TextEditingController _itemNameController;
+  late final TextEditingController _itemPriceController;
+  late final TextEditingController _itemRepeatController;
 
   // A tiny 32x32 black square PNG as a sample logo (base64)
   // You can replace this with your own base64-encoded PNG at runtime
@@ -108,6 +117,10 @@ class _MyHomePageState extends State<MyHomePage> {
     _receiptNumController = TextEditingController(text: _receiptNum);
     _laneController = TextEditingController(text: _lane);
     _footerController = TextEditingController(text: _footer);
+  _itemQuantityController = TextEditingController(text: _itemQuantity);
+  _itemNameController = TextEditingController(text: _itemName);
+  _itemPriceController = TextEditingController(text: _itemPrice);
+  _itemRepeatController = TextEditingController(text: _itemRepeat);
     _checkAndRequestPermissions();
     _loadFrogAsset();
   }
@@ -122,6 +135,10 @@ class _MyHomePageState extends State<MyHomePage> {
     _receiptNumController.dispose();
     _laneController.dispose();
     _footerController.dispose();
+  _itemQuantityController.dispose();
+  _itemNameController.dispose();
+  _itemPriceController.dispose();
+  _itemRepeatController.dispose();
     super.dispose();
   }
 
@@ -354,6 +371,14 @@ class _MyHomePageState extends State<MyHomePage> {
                 'lane': _lane,
                 'footer': _footer,
               },
+          'items': [
+            {
+              'quantity': _itemQuantity,
+              'name': _itemName,
+              'price': _itemPrice,
+              'repeat': _itemRepeat,
+            }
+          ],
           'image': _logoBase64 == null
               ? null
               : {
@@ -367,25 +392,27 @@ class _MyHomePageState extends State<MyHomePage> {
       };
 
       final printJob = PrintJob(
-        content: '''
-           .--._.--.
-          ( O     O )
-          /   . .   \\
-         .\`._______.\'.\`
-        /(           )\\
-      _/  \\  \\   /  /  \\_
-   .~   \`  \\  \\ /  /  \'   ~.
-  {    -.   \\  V  /   .-    }
-_ _\`.    \\  |  |  |  /    .\'\_ _
->_       _} |  |  | {_       _<
- /. - ~ ,_-\'  .^.  \`-_, ~ - .\\
-         \'-\'|/   \\|\`-\`
+        content: ''
+//         '''
+//            .--._.--.
+//           ( O     O )
+//           /   . .   \\
+//          .\`._______.\'.\`
+//         /(           )\\
+//       _/  \\  \\   /  /  \\_
+//    .~   \`  \\  \\ /  /  \'   ~.
+//   {    -.   \\  V  /   .-    }
+// _ _\`.    \\  |  |  |  /    .\'\_ _
+// >_       _} |  |  | {_       _<
+//  /. - ~ ,_-\'  .^.  \`-_, ~ - .\\
+//          \'-\'|/   \\|\`-\`
 
-Hello Star Printer!
-Counter: $_counter
-Print Test
+// Hello Star Printer!
+// Counter: $_counter
+// Print Test
 
-''',
+// ''',
+,
         settings: layoutSettings,
       );
       
@@ -554,6 +581,63 @@ Print Test
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
                     const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Single Item (between horizontal bars)',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      SizedBox(
+                        width: 70,
+                        child: TextField(
+                          controller: _itemQuantityController,
+                          decoration: const InputDecoration(
+                            labelText: 'Qty',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) => setState(() => _itemQuantity = v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _itemNameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Item Name',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (v) => setState(() => _itemName = v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 100,
+                        child: TextField(
+                          controller: _itemPriceController,
+                          decoration: const InputDecoration(
+                            labelText: 'Price',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (v) => setState(() => _itemPrice = v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 80,
+                        child: TextField(
+                          controller: _itemRepeatController,
+                          decoration: const InputDecoration(
+                            labelText: 'Repeat',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) => setState(() => _itemRepeat = v),
+                        ),
+                      ),
+                    ]),
                     ElevatedButton(
                       onPressed: _incrementCounter,
                       child: const Text('Increment Counter'),

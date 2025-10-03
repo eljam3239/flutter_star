@@ -601,6 +601,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 }
 
                 // 2.5) Details block below the image
+                let items = (layout?["items"] as? [[String: Any]]) ?? []
                 let hasAnyDetails = !locationText.isEmpty || !dateText.isEmpty || !timeText.isEmpty || !cashier.isEmpty || !receiptNum.isEmpty || !lane.isEmpty || !footer.isEmpty
                 if hasAnyDetails {
                     if graphicsOnly {
@@ -611,6 +612,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                                                                  receiptNum: receiptNum,
                                                                  lane: lane,
                                                                  footer: footer,
+                                                                 items: items,
                                                                  imageWidth: 576) {
                             let param = StarXpandCommand.Printer.ImageParameter(image: detailsImage, width: 576)
                             _ = printerBuilder.actionPrintImage(param)
@@ -642,11 +644,30 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         let right2 = lane.isEmpty ? "" : "Lane: \(lane)"
                         _ = printerBuilder.actionPrintText(left2, leftParam)
                         _ = printerBuilder.actionPrintText("\(right2)\n", rightParam)
-                        // Add a small gap before the top ruled line
+                        // Gap then first ruled line
                         _ = printerBuilder.actionFeedLine(1)
-                        // Ruled line across full printable width, blank, then another
                         _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
-                        _ = printerBuilder.actionFeedLine(1)
+
+                        // Item lines inserted here (left description, right price) before second ruled line
+                        if !items.isEmpty {
+                            let leftParamItems = StarXpandCommand.Printer.TextParameter().setWidth(30)
+                            let rightParamItems = StarXpandCommand.Printer.TextParameter().setWidth(18, StarXpandCommand.Printer.TextWidthParameter().setAlignment(.right))
+                            for item in items {
+                                let qty = (item["quantity"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
+                                let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Item"
+                                let priceRaw = (item["price"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "0.00"
+                                let repeatRaw = (item["repeat"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
+                                let repeatCount = Int(repeatRaw) ?? 1
+                                let leftText = "\(qty) x \(name)"
+                                let rightText = "$\(priceRaw)"
+                                for _ in 0..<max(1, min(repeatCount, 200)) {
+                                    _ = printerBuilder.actionPrintText(leftText, leftParamItems)
+                                    _ = printerBuilder.actionPrintText("\(rightText)\n", rightParamItems)
+                                }
+                            }
+                        }
+
+                        // Second ruled line after items
                         _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
                         _ = printerBuilder.actionFeedLine(1)
                         // Footer (centered) if present
@@ -887,7 +908,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     }
 
     // Helper: render the details block into an image for graphics-only printers
-    private func createDetailsImage(location: String, date: String, time: String, cashier: String, receiptNum: String, lane: String, footer: String, imageWidth: CGFloat = 576) -> UIImage? {
+    private func createDetailsImage(location: String, date: String, time: String, cashier: String, receiptNum: String, lane: String, footer: String, items: [[String: Any]] = [], imageWidth: CGFloat = 576) -> UIImage? {
         let font = UIFont.systemFont(ofSize: 22)
         let smallFont = UIFont.systemFont(ofSize: 20)
         let backgroundColor = UIColor.white
@@ -918,7 +939,27 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         // Space for two-column lines and ruled lines (with an extra gap before first rule)
         height += 2 * (smallFont.lineHeight + 10)
         height += 10 // extra gap before first rule
-        height += 2 * 2 + 2 * 10 // two 2px rules + spacing
+        // Height for first rule
+        height += 2 + 10
+        // Items block (each repeated line ~ smallFont.lineHeight + 4)
+        var computedItemLines: [(String,String)] = []
+        if !items.isEmpty {
+            for item in items {
+                let qty = (item["quantity"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
+                let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Item"
+                let priceRaw = (item["price"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "0.00"
+                let repeatRaw = (item["repeat"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
+                let repeatCount = Int(repeatRaw) ?? 1
+                let leftText = "\(qty) x \(name)"
+                let rightText = "$\(priceRaw)"
+                for _ in 0..<max(1, min(repeatCount, 200)) {
+                    computedItemLines.append((leftText, rightText))
+                }
+            }
+            height += CGFloat(computedItemLines.count) * (smallFont.lineHeight + 4)
+        }
+        // Second rule + spacing after it
+        height += 2 + 10
         if !footer.isEmpty {
             let attrs: [NSAttributedString.Key: Any] = [.font: smallFont, .foregroundColor: textColor, .paragraphStyle: paraCenter]
             let rect = (footer as NSString).boundingRect(with: CGSize(width: width - 40, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
@@ -959,9 +1000,20 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         y += 10
         // Ruled line (2px) full width edge-to-edge, blank, ruled line
         ctx.setFillColor(UIColor.black.cgColor)
-        ctx.fill(CGRect(x: 0, y: y, width: width, height: 2))
+        ctx.fill(CGRect(x: 0, y: y, width: width, height: 2)) // first rule
         y += 2 + 10
-        ctx.fill(CGRect(x: 0, y: y, width: width, height: 2))
+        // Items (if any) as two columns left (qty x name) / right (price)
+        if !computedItemLines.isEmpty {
+            let colWidth = (width - 24) / 2
+            for (ltext, rtext) in computedItemLines {
+                let leftRect = CGRect(x: 12, y: y, width: colWidth, height: smallFont.lineHeight + 2)
+                let rightRect = CGRect(x: 12 + colWidth, y: y, width: colWidth, height: smallFont.lineHeight + 2)
+                (ltext as NSString).draw(in: leftRect, withAttributes: [.font: smallFont, .foregroundColor: textColor, .paragraphStyle: paraLeft])
+                (rtext as NSString).draw(in: rightRect, withAttributes: [.font: smallFont, .foregroundColor: textColor, .paragraphStyle: paraRight])
+                y += smallFont.lineHeight + 4
+            }
+        }
+        ctx.fill(CGRect(x: 0, y: y, width: width, height: 2)) // second rule
         y += 2 + 10
 
         if !footer.isEmpty {

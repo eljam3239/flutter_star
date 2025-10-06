@@ -810,29 +810,20 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     layouts.add(tax)
     totalHeight += tax.height
 
-    // Two column helper: left and right each 24 char width equivalent
-    fun twoCol(left: String, right: String): StaticLayout {
-      val leftText = left
-      val rightText = right
-      // crude two-column by spacing; final print uses image so mono spacing is acceptable
-      val spaces = 40
-      val combined = if (rightText.isNotEmpty()) {
-        (leftText + " ".repeat(spaces)).take(spaces) + rightText
-      } else leftText
-      return buildLayout(combined, bodyPaint, Layout.Alignment.ALIGN_NORMAL)
-    }
-
+    // Column rows (date/time vs cashier, receipt vs lane) need true right alignment.
+    // We'll measure & draw these rows manually instead of using padded spaces.
+    data class TwoCol(val left: String, val right: String)
+    val twoColRows = mutableListOf<TwoCol>()
     val left1 = listOf(dateText, timeText).filter { it.isNotEmpty() }.joinToString(" ")
     val right1 = if (cashier.isNotEmpty()) "Cashier: $cashier" else ""
-    val row1 = twoCol(left1, right1)
-    layouts.add(row1)
-    totalHeight += row1.height
-
     val left2 = if (receiptNum.isNotEmpty()) "Receipt No: $receiptNum" else ""
     val right2 = if (lane.isNotEmpty()) "Lane: $lane" else ""
-    val row2 = twoCol(left2, right2)
-    layouts.add(row2)
-    totalHeight += row2.height
+    if (left1.isNotEmpty() || right1.isNotEmpty()) twoColRows.add(TwoCol(left1, right1))
+    if (left2.isNotEmpty() || right2.isNotEmpty()) twoColRows.add(TwoCol(left2, right2))
+
+    // Estimate per-row height using bodyPaint metrics
+    val rowHeight = (bodyPaint.textSize + 10).toInt() // a little padding below baseline
+    totalHeight += rowHeight * twoColRows.size
 
     // Prepare items (if any) for graphics-only rendering
     val parsedItems = mutableListOf<Pair<String,String>>()
@@ -873,13 +864,54 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     canvas.drawColor(Color.WHITE)
     var y = padding
 
-    // Draw text layouts first
+    // Draw text layouts first (those already in layouts list)
     for (layout in layouts) {
       canvas.save()
       canvas.translate(padding.toFloat(), y.toFloat())
       layout.draw(canvas)
       canvas.restore()
       y += layout.height
+    }
+
+    // Draw manual two-column rows with precise right alignment
+    if (twoColRows.isNotEmpty()) {
+      val availableWidth = (width - padding * 2).toFloat()
+      // Reserve ~60% for left column, rest for right column; adjust if right is long.
+      val baseLeftWidth = availableWidth * 0.55f
+      for (row in twoColRows) {
+        val (l, r) = row
+        // Measure right text width
+        val rightWidth = bodyPaint.measureText(r)
+        // Dynamic left max: ensure right text always fits with a small gap
+        val gap = 12f
+        val leftMax = (availableWidth - rightWidth - gap).coerceAtLeast(availableWidth * 0.35f)
+        val leftWidth = minOf(baseLeftWidth, leftMax)
+
+        // Draw left (wrap if needed)
+        if (l.isNotEmpty()) {
+          val leftLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            StaticLayout.Builder.obtain(l, 0, l.length, bodyPaint, leftWidth.toInt())
+              .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+              .setIncludePad(false)
+              .build()
+          } else {
+            @Suppress("DEPRECATION")
+            StaticLayout(l, bodyPaint, leftWidth.toInt(), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0f, false)
+          }
+          canvas.save()
+            canvas.translate(padding.toFloat(), y.toFloat())
+            leftLayout.draw(canvas)
+          canvas.restore()
+        }
+        // Draw right (single line) aligned to right edge
+        if (r.isNotEmpty()) {
+          val baseline = y + bodyPaint.textSize
+          val rightEdge = width - padding
+          canvas.drawText(r, rightEdge.toFloat(), baseline - 4, bodyPaint.apply { textAlign = android.graphics.Paint.Align.RIGHT })
+          bodyPaint.textAlign = android.graphics.Paint.Align.LEFT // reset
+        }
+        y += rowHeight
+      }
     }
 
     // Draw gap then first ruled line

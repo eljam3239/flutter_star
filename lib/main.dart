@@ -209,8 +209,26 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _pickReceiptImage() async {
-    if (!Platform.isIOS) return; // only implementing for iOS per request
+    // Support iOS & Android; silently ignore on other platforms
+    if (!(Platform.isIOS || Platform.isAndroid)) {
+      print('DEBUG: Image picking not supported on this platform');
+      return;
+    }
     try {
+      // Optional Android permission (may be unnecessary on newer Android photo picker API)
+      if (Platform.isAndroid) {
+        try {
+          final storageStatus = await Permission.storage.status;
+          if (storageStatus.isDenied) {
+            final result = await Permission.storage.request();
+            if (!result.isGranted) {
+              print('DEBUG: Storage permission denied (continuing, picker may still work).');
+            }
+          }
+        } catch (permErr) {
+          print('DEBUG: Storage permission check threw (ignoring): $permErr');
+        }
+      }
       final picker = ImagePicker();
       final XFile? file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
       if (file == null) {
@@ -236,7 +254,7 @@ class _MyHomePageState extends State<MyHomePage> {
         _logoBase64 = b64;
         _imageWidthPx = suggestedWidth;
       });
-      print('DEBUG: Picked image size=${bytes.lengthInBytes} bytes, suggestedWidth=$suggestedWidth');
+      print('DEBUG: Picked image size=${bytes.lengthInBytes} bytes, suggestedWidth=$suggestedWidth platform=${Platform.isIOS ? 'iOS' : 'Android'}');
     } catch (e) {
       print('DEBUG: Failed to pick image: $e');
     }
@@ -801,10 +819,10 @@ class _MyHomePageState extends State<MyHomePage> {
                           child: const Text('Clear Logo'),
                         ),
                         const SizedBox(width: 8),
-                        if (Platform.isIOS)
+                        if (Platform.isIOS || Platform.isAndroid)
                           ElevatedButton(
                             onPressed: _pickReceiptImage,
-                            child: const Text('Pick Image (iOS)'),
+                            child: Text('Pick Image (${Platform.isIOS ? 'iOS' : 'Android'})'),
                           ),
                       ],
                     ),

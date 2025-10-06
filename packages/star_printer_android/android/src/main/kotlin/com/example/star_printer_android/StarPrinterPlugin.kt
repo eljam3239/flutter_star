@@ -458,9 +458,17 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         }
 
         // 3) Body/content
+        val trimmedBody = content.trim()
         if (graphicsOnly) {
-          val bodyBitmap = createTextBitmap(content)
-          printerBuilder.actionPrintImage(ImageParameter(bodyBitmap, 576)).actionFeedLine(2)
+          // Skip generating an empty body bitmap to prevent a blank rectangle artifact
+          // on graphics-only printers (e.g., TSP100III). Only render if there is real content.
+          if (trimmedBody.isNotEmpty()) {
+            val bodyBitmap = createTextBitmap(content)
+            printerBuilder.actionPrintImage(ImageParameter(bodyBitmap, 576)).actionFeedLine(2)
+          } else {
+            // Light feed to keep a small margin before cut for visual consistency.
+            printerBuilder.actionFeedLine(1)
+          }
         } else {
           printerBuilder.actionPrintText(content).actionFeedLine(2)
         }

@@ -70,7 +70,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _openDrawerAfterPrint = true; // Option to auto-open drawer after printing
 
   // Receipt layout controls (for integration into POS app)
-  String _headerTitle = "Dick N' Balls";
+  String _headerTitle = "Wendy's";
   int _headerFontSize = 32; // header-sized font
   int _headerSpacingLines = 1; // blank lines after header
   String? _logoBase64; // small centered image (base64-encoded PNG)

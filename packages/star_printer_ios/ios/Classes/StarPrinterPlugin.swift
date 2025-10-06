@@ -681,13 +681,19 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 }
 
                 // 3) Body content
+                let trimmedBody = content.trimmingCharacters(in: .whitespacesAndNewlines)
                 if graphicsOnly {
-                    // Render body text to image for graphics-only printers
-                    if let textImage = createTextImage(text: content, fontSize: 24, imageWidth: 576),
+                    // Only render a body image if there's actual non‑whitespace content to avoid
+                    // an empty white rectangle artifact on graphics‑only models (e.g. TSP100III).
+                    if !trimmedBody.isEmpty,
+                       let textImage = createTextImage(text: content, fontSize: 24, imageWidth: 576),
                        let safeText = ensureVisibleImage(textImage, targetWidth: 576) {
                         let param = StarXpandCommand.Printer.ImageParameter(image: safeText, width: 576)
                         _ = printerBuilder.actionPrintImage(param)
                         _ = printerBuilder.actionFeedLine(2)
+                    } else {
+                        // Provide a small feed for bottom margin consistency when skipping body.
+                        _ = printerBuilder.actionFeedLine(1)
                     }
                 } else {
                     _ = printerBuilder.actionPrintText(content)

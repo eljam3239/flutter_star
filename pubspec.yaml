@@ -42,6 +42,9 @@ dependencies:
   star_printer:
     path: packages/star_printer
 
+  # Image picker for selecting receipt logo on iOS
+  image_picker: ^1.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

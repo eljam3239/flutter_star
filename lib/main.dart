@@ -4,6 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io' show Platform;
 import 'package:flutter/services.dart' show rootBundle;
 import 'dart:convert' show base64Encode;
+import 'package:image_picker/image_picker.dart';
 import 'bluetooth_test_widget.dart';
 import 'wired_test_widget.dart';
 
@@ -204,6 +205,40 @@ class _MyHomePageState extends State<MyHomePage> {
       print('DEBUG: Loaded frog asset, bytes=${bytes.lengthInBytes}');
     } catch (e) {
       print('DEBUG: Failed to load frog asset: $e');
+    }
+  }
+
+  Future<void> _pickReceiptImage() async {
+    if (!Platform.isIOS) return; // only implementing for iOS per request
+    try {
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+      if (file == null) {
+        print('DEBUG: Image pick cancelled');
+        return;
+      }
+      final bytes = await file.readAsBytes();
+      // Heuristic: decide target width based on original width if decodable via instantiateImageCodec (optional improvement)
+      // For simplicity, set width relative to size: if > 1000px wide, scale to 384 else 256 else 200.
+      int suggestedWidth = 200;
+      try {
+        // We can try to decode dimensions via Image.memory in a detached way later; keep simple now.
+        if (bytes.lengthInBytes > 4000000) {
+          suggestedWidth = 384;
+        } else if (bytes.lengthInBytes > 1000000) {
+          suggestedWidth = 320;
+        } else if (bytes.lengthInBytes > 300000) {
+          suggestedWidth = 256;
+        }
+      } catch (_) {}
+      final b64 = base64Encode(bytes);
+      setState(() {
+        _logoBase64 = b64;
+        _imageWidthPx = suggestedWidth;
+      });
+      print('DEBUG: Picked image size=${bytes.lengthInBytes} bytes, suggestedWidth=$suggestedWidth');
+    } catch (e) {
+      print('DEBUG: Failed to pick image: $e');
     }
   }
 
@@ -765,6 +800,12 @@ class _MyHomePageState extends State<MyHomePage> {
                               : null,
                           child: const Text('Clear Logo'),
                         ),
+                        const SizedBox(width: 8),
+                        if (Platform.isIOS)
+                          ElevatedButton(
+                            onPressed: _pickReceiptImage,
+                            child: const Text('Pick Image (iOS)'),
+                          ),
                       ],
                     ),
                     if (_logoBase64 != null) ...[

@@ -401,6 +401,70 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  Future<void> _printLabel() async {
+    print('DEBUG: Print label button pressed');
+    
+    try {
+      print('DEBUG: Creating label print job...');
+      // Centered label layout optimized for narrow label printers (e.g., TSP100SK)
+      final labelSettings = {
+        'layout': {
+          'header': {
+            'title': '',
+            'align': 'center',
+            'fontSize': 24,
+            'spacingLines': 0,
+          },
+          'details': {
+            'locationText': '',
+            'date': '',
+            'time': '',
+            'cashier': '',
+            'receiptNum': '',
+            'lane': '',
+            'footer': '',
+          },
+          'items': [],
+          'image': null,
+        },
+      };
+
+      // All centered content for narrow labels
+      final productName = _itemName.isNotEmpty ? _itemName : 'PRODUCT NAME';
+      final qty = _itemQuantity.isNotEmpty ? _itemQuantity : '1';
+      final sku = _receiptNum.isNotEmpty ? _receiptNum : 'SKU123';
+      final price = _itemPrice.isNotEmpty ? _itemPrice : '0.00';
+      
+      final labelContent = '''
+$productName
+$qty | Green
+
+||||||||||||||||
+
+$sku
+\$$price
+''';
+
+      final printJob = PrintJob(
+        content: labelContent,
+        settings: labelSettings,
+      );
+      
+      print('DEBUG: Sending label print job to printer...');
+      await StarPrinter.printReceipt(printJob);
+      
+      print('DEBUG: Label print completed successfully');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Label printed successfully')),
+      );
+    } catch (e) {
+      print('DEBUG: Label print failed with error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to print label: $e')),
+      );
+    }
+  }
+
   Future<void> _printReceipt() async {
     print('DEBUG: Print receipt button pressed');
     
@@ -995,6 +1059,10 @@ class _MyHomePageState extends State<MyHomePage> {
                         ElevatedButton(
                           onPressed: _printReceipt,
                           child: const Text('Print Receipt'),
+                        ),
+                        ElevatedButton(
+                          onPressed: _printLabel,
+                          child: const Text('Print Label'),
                         ),
                         ElevatedButton(
                           onPressed: _getStatus,

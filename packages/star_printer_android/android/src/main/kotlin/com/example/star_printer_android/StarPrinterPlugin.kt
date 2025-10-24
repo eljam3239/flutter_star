@@ -519,9 +519,11 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
         // 3) Body/content
         val trimmedBody = content.trim()
-        if (graphicsOnly) {
+        val labelPrinter = isLabelPrinter()
+        if (graphicsOnly || labelPrinter) {
           // Skip generating an empty body bitmap to prevent a blank rectangle artifact
           // on graphics-only printers (e.g., TSP100III). Only render if there is real content.
+          // Label printers (like TSP100SK) also need centered image rendering.
           if (trimmedBody.isNotEmpty()) {
             val bodyBitmap = createTextBitmap(content, targetDots)
             printerBuilder.actionPrintImage(ImageParameter(bodyBitmap, targetDots)).actionFeedLine(2)
@@ -737,11 +739,14 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     }
   }
 
-  // Heuristic: determine if current model is a label printer (e.g., mC-Label2)
+  // Heuristic: determine if current model is a label printer (e.g., mC-Label2, TSP100SK)
   private fun isLabelPrinter(): Boolean {
     return try {
       val modelStr = printer?.information?.model?.toString() ?: return false
-      modelStr.lowercase().contains("label")
+      val ms = modelStr.lowercase()
+      val isLabel = ms.contains("label") || ms.contains("tsp100iv_sk") || ms.contains("tsp100sk") || ms.contains("_sk")
+      println("DEBUG: isLabelPrinter check for '$ms': $isLabel")
+      isLabel
     } catch (_: Exception) { false }
   }
 
@@ -749,15 +754,28 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   private fun currentPrintableWidthDots(): Int {
     return try {
       val ms = (printer?.information?.model?.toString() ?: "").lowercase()
-      when {
+      println("DEBUG: Printer model for width calculation: $ms")
+      
+      // ADJUST THIS VALUE if labels are still being cut off:
+      // - If content is cut off on right: decrease this number (try 220, 200, etc.)
+      // - If content appears too narrow with margins: increase this number (try 260, 280, etc.)
+      val tsp100skWidth = 270  // Increased from 240 to reduce right-side whitespace (3-5mm)
+      
+      val width = when {
         // Label printers - render at 576 and let device scale if needed
         ms.contains("label") -> 576
+        // TSP100SK is a 2" label printer but actual printable width appears much narrower
+        ms.contains("tsp100iv_sk") || ms.contains("tsp100sk") || ms.contains("_sk") -> {
+          println("DEBUG: TSP100SK detected, using $tsp100skWidth dots width")
+          tsp100skWidth
+        }
         // 58mm class
         ms.contains("mpop") || ms.contains("mcp2") -> 384
         // 80mm class
         ms.contains("mcp3") || ms.contains("tsp100") || ms.contains("tsp650") -> 576
         else -> 576
       }
+      width
     } catch (_: Exception) { 576 }
   }
 
@@ -817,6 +835,22 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
   // Overload that renders text to a specified width (in dots)
   private fun createTextBitmap(text: String, width: Int): Bitmap {
+    // Filter out barcode placeholder lines (lines that are mostly pipe characters)
+    val filteredText = text.lines()
+      .filter { line ->
+        val trimmed = line.trim()
+        // Keep empty lines
+        if (trimmed.isEmpty()) return@filter true
+        
+        val pipeCount = trimmed.count { it == '|' }
+        val totalChars = trimmed.length
+        // Skip lines that are more than 50% pipe characters (barcode placeholders)
+        (pipeCount.toDouble() / totalChars.toDouble()) < 0.5
+      }
+      .joinToString("\n")
+    
+    println("DEBUG: Filtered out barcode placeholders - Original: ${text.length} chars, Filtered: ${filteredText.length} chars")
+    
     val w = width.coerceIn(8, 576)
     val padding = 20
 
@@ -830,17 +864,17 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
     val layout: StaticLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       StaticLayout.Builder
-        .obtain(text, 0, text.length, textPaint, contentWidth)
-        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+        .obtain(filteredText, 0, filteredText.length, textPaint, contentWidth)
+        .setAlignment(Layout.Alignment.ALIGN_CENTER)
         .setIncludePad(false)
         .build()
     } else {
       @Suppress("DEPRECATION")
       StaticLayout(
-        text,
+        filteredText,
         textPaint,
         contentWidth,
-        Layout.Alignment.ALIGN_NORMAL,
+        Layout.Alignment.ALIGN_CENTER,
         1.0f,
         0.0f,
         false

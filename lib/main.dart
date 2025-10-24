@@ -412,7 +412,7 @@ class _MyHomePageState extends State<MyHomePage> {
           'header': {
             'title': '',
             'align': 'center',
-            'fontSize': 24,
+            'fontSize': 48,
             'spacingLines': 0,
           },
           'details': {

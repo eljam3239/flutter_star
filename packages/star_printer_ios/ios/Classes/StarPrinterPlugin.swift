@@ -11,9 +11,21 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     private func currentPrintableWidthDots() -> Int {
         guard let model = self.printer?.information?.model else { return 576 }
         let name = String(describing: model).lowercased()
+        print("DEBUG: Printer model for width calculation: \(name)")
         // Common mappings (approx): 80mm -> 576 dots, 58mm/2-inch -> 384 dots
+        // TSP100SK uses 2" labels at 203 DPI = ~406 dots, but printable area appears much narrower
+        // 
+        // ADJUST THIS VALUE if labels are still being cut off:
+        // - If content is cut off on right: decrease this number (try 220, 200, etc.)
+        // - If content appears too narrow with margins: increase this number (try 260, 280, etc.)
+        let tsp100skWidth = 255  // Increased from 240 to reduce right-side whitespace (3-5mm)
+        
         if name.contains("mpop") { return 384 }
         if name.contains("mc_label2") || name.contains("mc-label2") { return 384 }
+        if name.contains("tsp100iv_sk") || name.contains("tsp100iv-sk") || name.contains("sk") { 
+            print("DEBUG: TSP100SK detected, using \(tsp100skWidth) dots width")
+            return tsp100skWidth
+        }
         if name.contains("mc_print3") || name.contains("mc-print3") { return 576 }
         if name.contains("tsp100iv") || name.contains("tsp100iii") { return 576 }
         return 576
@@ -39,7 +51,10 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     private func isLabelPrinter() -> Bool {
         guard let model = self.printer?.information?.model else { return false }
         let name = String(describing: model).lowercased()
-        return name.contains("mc_label2") || name.contains("mc-label2")
+        let isLabel = name.contains("mc_label2") || name.contains("mc-label2") || 
+               name.contains("tsp100iv_sk") || name.contains("tsp100iv-sk") || name.contains("sk")
+        print("DEBUG: isLabelPrinter check for '\(name)': \(isLabel)")
+        return isLabel
     }
     
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -601,6 +616,13 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     print("  Emulation: \(printerInfo.emulation) (raw: \(printerInfo.emulation.rawValue))")
                     print("  Connection Type: \(self.printer?.connectionSettings.interfaceType.rawValue ?? -1)")
                     print("  Identifier: \(self.printer?.connectionSettings.identifier ?? "unknown")")
+                    
+                    // Try to log all available properties
+                    print("  Checking for paper width information...")
+                    let mirror = Mirror(reflecting: printerInfo)
+                    for child in mirror.children {
+                        print("  Property: \(child.label ?? "unknown") = \(child.value)")
+                    }
                 } else {
                     print("No printer information available")
                 }
@@ -751,9 +773,11 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
 
                 // 3) Body content
                 let trimmedBody = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                if graphicsOnly {
+                let labelPrinter = isLabelPrinter()
+                if graphicsOnly || labelPrinter {
                     // Only render a body image if there's actual non‑whitespace content to avoid
                     // an empty white rectangle artifact on graphics‑only models (e.g. TSP100III).
+                    // Label printers (like TSP100SK) also need centered image rendering.
                     if !trimmedBody.isEmpty,
                        let textImage = createTextImage(text: content, fontSize: 24, imageWidth: CGFloat(targetDots)),
                        let safeText = ensureVisibleImage(textImage, targetWidth: targetDots) {
@@ -939,6 +963,22 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     
     // Helper: create an image from text with adjustable font/width
     private func createTextImage(text: String, fontSize: CGFloat, imageWidth: CGFloat = 576) -> UIImage? {
+        // Filter out barcode placeholder lines (lines that are mostly pipe characters)
+        let filteredText = text.components(separatedBy: "\n")
+            .filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                // Keep empty lines
+                if trimmed.isEmpty { return true }
+                
+                let pipeCount = trimmed.filter { $0 == "|" }.count
+                let totalChars = trimmed.count
+                // Skip lines that are more than 50% pipe characters (barcode placeholders)
+                return Double(pipeCount) / Double(totalChars) < 0.5
+            }
+            .joined(separator: "\n")
+        
+        print("DEBUG: Filtered out barcode placeholders - Original: \(text.count) chars, Filtered: \(filteredText.count) chars")
+        
         let font = UIFont.systemFont(ofSize: fontSize)
         let textColor = UIColor.black
         let backgroundColor = UIColor.white
@@ -953,7 +993,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         ]
 
         let bounds = CGSize(width: imageWidth - 40, height: CGFloat.greatestFiniteMagnitude)
-        let textSize = text.boundingRect(
+        let textSize = filteredText.boundingRect(
             with: bounds,
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: textAttributes,
@@ -972,7 +1012,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         context.fill(CGRect(origin: .zero, size: imageSize))
 
         let textRect = CGRect(x: 20, y: 20, width: imageWidth - 40, height: textSize.height)
-        text.draw(in: textRect, withAttributes: textAttributes)
+        filteredText.draw(in: textRect, withAttributes: textAttributes)
 
         guard let image = UIGraphicsGetImageFromCurrentImageContext() else {
             UIGraphicsEndImageContext()

@@ -458,7 +458,8 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
   // 2.5) Barcode printing (if barcode data is provided)
         if (barcodeContent.isNotEmpty()) {
-          println("Printing barcode: content=$barcodeContent, symbology=$barcodeSymbology")
+          val labelPrinter = isLabelPrinter()
+          println("DEBUG: Printing barcode: content=$barcodeContent, symbology=$barcodeSymbology, isLabelPrinter=$labelPrinter")
           
           // Map symbology string to StarXpand BarcodeSymbology enum
           val symbology = when (barcodeSymbology) {
@@ -475,10 +476,14 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           }
           
           // Create barcode parameter
+          // For narrow label printers, use minimal bar width (2 dots) to fit within print area
+          val barDots = if (labelPrinter) 2 else 3
           val barcodeParam = BarcodeParameter(barcodeContent, symbology)
-            .setBarDots(3)  // Bar width in dots (3 is medium)
+            .setBarDots(barDots)  // Use 2 dots for label printers to fit in narrow width
             .setHeight(barcodeHeight.toDouble())  // Height in dots
             .setPrintHRI(barcodePrintHRI)  // Print human-readable interpretation
+          
+          println("DEBUG: Barcode parameters - barDots=$barDots, height=$barcodeHeight, printableWidth=$targetDots")
           
           // Print barcode centered
           printerBuilder
@@ -487,6 +492,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
             .styleAlignment(Alignment.Left)
           
           printerBuilder.actionFeedLine(1)  // Add spacing after barcode
+          println("DEBUG: Barcode command added to printer builder")
         }
 
   // 2.6) Details block (we will later inject items between ruled lines)
@@ -561,18 +567,22 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         // 3) Body/content
         val trimmedBody = content.trim()
         val labelPrinter = isLabelPrinter()
+        println("DEBUG: Rendering body content - isLabelPrinter=$labelPrinter, graphicsOnly=$graphicsOnly, contentLength=${trimmedBody.length}")
         if (graphicsOnly || labelPrinter) {
           // Skip generating an empty body bitmap to prevent a blank rectangle artifact
           // on graphics-only printers (e.g., TSP100III). Only render if there is real content.
           // Label printers (like TSP100SK) also need centered image rendering.
           if (trimmedBody.isNotEmpty()) {
+            println("DEBUG: Rendering body as image for label printer")
             val bodyBitmap = createTextBitmap(content, targetDots)
             printerBuilder.actionPrintImage(ImageParameter(bodyBitmap, targetDots)).actionFeedLine(2)
           } else {
             // Light feed to keep a small margin before cut for visual consistency.
+            println("DEBUG: Skipping body content (empty)")
             printerBuilder.actionFeedLine(1)
           }
         } else {
+          println("DEBUG: Rendering body as text")
           printerBuilder.actionPrintText(content).actionFeedLine(2)
         }
 
@@ -800,7 +810,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       // ADJUST THIS VALUE if labels are still being cut off:
       // - If content is cut off on right: decrease this number (try 220, 200, etc.)
       // - If content appears too narrow with margins: increase this number (try 260, 280, etc.)
-      val tsp100skWidth = 270  // Increased from 240 to reduce right-side whitespace (3-5mm)
+      val tsp100skWidth = 270  // Adjusted for TSP100SK label printer
       
       val width = when {
         // Label printers - render at 576 and let device scale if needed
@@ -876,6 +886,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
   // Overload that renders text to a specified width (in dots)
   private fun createTextBitmap(text: String, width: Int): Bitmap {
+    println("DEBUG createTextBitmap: Original text = '$text'")
     // Filter out barcode placeholder lines (lines that are mostly pipe characters)
     val filteredText = text.lines()
       .filter { line ->
@@ -886,11 +897,15 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         val pipeCount = trimmed.count { it == '|' }
         val totalChars = trimmed.length
         // Skip lines that are more than 50% pipe characters (barcode placeholders)
-        (pipeCount.toDouble() / totalChars.toDouble()) < 0.5
+        val isPipeLine = (pipeCount.toDouble() / totalChars.toDouble()) >= 0.5
+        if (isPipeLine) {
+          println("DEBUG createTextBitmap: Filtering out pipe line: '$trimmed' (pipes: $pipeCount/$totalChars)")
+        }
+        !isPipeLine
       }
       .joinToString("\n")
     
-    println("DEBUG: Filtered out barcode placeholders - Original: ${text.length} chars, Filtered: ${filteredText.length} chars")
+    println("DEBUG createTextBitmap: Filtered text = '$filteredText' (Original: ${text.length} chars, Filtered: ${filteredText.length} chars)")
     
     val w = width.coerceIn(8, 576)
     val padding = 20

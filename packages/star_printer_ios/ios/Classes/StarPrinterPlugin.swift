@@ -18,7 +18,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         // ADJUST THIS VALUE if labels are still being cut off:
         // - If content is cut off on right: decrease this number (try 220, 200, etc.)
         // - If content appears too narrow with margins: increase this number (try 260, 280, etc.)
-        let tsp100skWidth = 255  // Increased from 240 to reduce right-side whitespace (3-5mm)
+        let tsp100skWidth = 270  // Adjusted for TSP100SK label printer
         
         if name.contains("mpop") { return 384 }
         if name.contains("mc_label2") || name.contains("mc-label2") { return 384 }
@@ -689,8 +689,12 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
 
                 // 2.5) Barcode printing (if barcode data is provided)
                 if !barcodeContent.isEmpty {
-                    print("Printing barcode: content=\(barcodeContent), symbology=\(barcodeSymbology)")
+                    print("DEBUG: Printing barcode: content=\(barcodeContent), symbology=\(barcodeSymbology), isLabelPrinter=\(isLabelPrinter())")
                     
+                    let labelPrinter = isLabelPrinter()
+                    
+                    // For label printers, the barcode command might not work properly
+                    // Try using the native barcode command first
                     // Map symbology string to StarXpand BarcodeSymbology enum
                     let symbology: StarXpandCommand.Printer.BarcodeSymbology
                     switch barcodeSymbology.lowercased() {
@@ -716,11 +720,14 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         symbology = .code128  // Default to CODE128
                     }
                     
-                    // Create barcode parameter
+                    // Create barcode parameter  
+                    // For narrow label printers, use minimal bar width (2 dots) to fit within print area
                     let barcodeParam = StarXpandCommand.Printer.BarcodeParameter(content: barcodeContent, symbology: symbology)
-                        .setBarDots(3)  // Bar width in dots (3 is medium)
+                        .setBarDots(labelPrinter ? 2 : 3)  // Use 2 dots for label printers to fit in narrow width
                         .setHeight(Double(barcodeHeight))  // Height in dots
                         .setPrintHRI(barcodePrintHRI)  // Print human-readable interpretation
+                    
+                    print("DEBUG: Barcode parameters - barDots=\(labelPrinter ? 2 : 3), height=\(barcodeHeight), printableWidth=\(targetDots)")
                     
                     // Print barcode centered
                     _ = printerBuilder
@@ -729,6 +736,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         .styleAlignment(.left)
                     
                     _ = printerBuilder.actionFeedLine(1)  // Add spacing after barcode
+                    print("DEBUG: Barcode command added to printer builder (barDots=\(labelPrinter ? 2 : 3))")
                 }
 
                 // 2.6) Details block below the image/barcode
@@ -824,6 +832,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 // 3) Body content
                 let trimmedBody = content.trimmingCharacters(in: .whitespacesAndNewlines)
                 let labelPrinter = isLabelPrinter()
+                print("DEBUG: Rendering body content - isLabelPrinter=\(labelPrinter), graphicsOnly=\(graphicsOnly), contentLength=\(trimmedBody.count)")
                 if graphicsOnly || labelPrinter {
                     // Only render a body image if there's actual non‑whitespace content to avoid
                     // an empty white rectangle artifact on graphics‑only models (e.g. TSP100III).
@@ -831,14 +840,17 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     if !trimmedBody.isEmpty,
                        let textImage = createTextImage(text: content, fontSize: 24, imageWidth: CGFloat(targetDots)),
                        let safeText = ensureVisibleImage(textImage, targetWidth: targetDots) {
+                        print("DEBUG: Rendering body as image for label printer")
                         let param = StarXpandCommand.Printer.ImageParameter(image: safeText, width: targetDots)
                         _ = printerBuilder.actionPrintImage(param)
                         _ = printerBuilder.actionFeedLine(2)
                     } else {
                         // Provide a small feed for bottom margin consistency when skipping body.
+                        print("DEBUG: Skipping body content (empty or image creation failed)")
                         _ = printerBuilder.actionFeedLine(1)
                     }
                 } else {
+                    print("DEBUG: Rendering body as text")
                     _ = printerBuilder.actionPrintText(content)
                     _ = printerBuilder.actionFeedLine(2)
                 }
@@ -1013,6 +1025,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     
     // Helper: create an image from text with adjustable font/width
     private func createTextImage(text: String, fontSize: CGFloat, imageWidth: CGFloat = 576) -> UIImage? {
+        print("DEBUG createTextImage: Original text = '\(text)'")
         // Filter out barcode placeholder lines (lines that are mostly pipe characters)
         let filteredText = text.components(separatedBy: "\n")
             .filter { line in
@@ -1023,11 +1036,15 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 let pipeCount = trimmed.filter { $0 == "|" }.count
                 let totalChars = trimmed.count
                 // Skip lines that are more than 50% pipe characters (barcode placeholders)
-                return Double(pipeCount) / Double(totalChars) < 0.5
+                let isPipeLine = Double(pipeCount) / Double(totalChars) >= 0.5
+                if isPipeLine {
+                    print("DEBUG createTextImage: Filtering out pipe line: '\(trimmed)' (pipes: \(pipeCount)/\(totalChars))")
+                }
+                return !isPipeLine
             }
             .joined(separator: "\n")
         
-        print("DEBUG: Filtered out barcode placeholders - Original: \(text.count) chars, Filtered: \(filteredText.count) chars")
+        print("DEBUG createTextImage: Filtered text = '\(filteredText)' (Original: \(text.count) chars, Filtered: \(filteredText.count) chars)")
         
         let font = UIFont.systemFont(ofSize: fontSize)
         let textColor = UIColor.black

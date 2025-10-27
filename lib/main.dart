@@ -437,15 +437,15 @@ class _MyHomePageState extends State<MyHomePage> {
           'barcode': {
             'content': scancode,
             'symbology': 'code128',  // Using CODE128 as requested
-            'height': 50,  // Height in dots
-            'printHRI': true,  // Print human-readable interpretation below barcode
+            'height': 8,  // Very compact barcode height (90% shorter than default ~50)
+            'printHRI': false,  // Don't print numbers below barcode to save vertical space
           },
         },
       };
       
       final labelContent = '''
 $productName
-$qty | Green
+$qty - Green
 
 $sku
 \$$price

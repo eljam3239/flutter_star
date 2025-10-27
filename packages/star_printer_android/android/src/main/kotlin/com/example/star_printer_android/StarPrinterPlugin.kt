@@ -416,7 +416,8 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         val barcodeSymbology = (barcodeBlock?.get("symbology") as? String)?.trim()?.lowercase() ?: "code128"
         val barcodeHeight = (barcodeBlock?.get("height") as? Number)?.toInt() ?: 50
         val barcodePrintHRI = (barcodeBlock?.get("printHRI") as? Boolean) ?: true
-        val footer = (details?.get("footer") as? String)?.trim().orEmpty()
+        
+        println("DEBUG: Barcode settings from Dart - content=$barcodeContent, height=$barcodeHeight, symbology=$barcodeSymbology")
 
   val graphicsOnly = isGraphicsOnlyPrinter()
 
@@ -810,7 +811,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       // ADJUST THIS VALUE if labels are still being cut off:
       // - If content is cut off on right: decrease this number (try 220, 200, etc.)
       // - If content appears too narrow with margins: increase this number (try 260, 280, etc.)
-      val tsp100skWidth = 270  // Adjusted for TSP100SK label printer
+      val tsp100skWidth = 240  // Optimized for TSP100SK label printing
       
       val width = when {
         // Label printers - render at 576 and let device scale if needed

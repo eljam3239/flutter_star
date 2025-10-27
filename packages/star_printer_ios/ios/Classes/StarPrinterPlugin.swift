@@ -18,7 +18,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         // ADJUST THIS VALUE if labels are still being cut off:
         // - If content is cut off on right: decrease this number (try 220, 200, etc.)
         // - If content appears too narrow with margins: increase this number (try 260, 280, etc.)
-        let tsp100skWidth = 270  // Adjusted for TSP100SK label printer
+        let tsp100skWidth = 240  // Optimized for TSP100SK label printing
         
         if name.contains("mpop") { return 384 }
         if name.contains("mc_label2") || name.contains("mc-label2") { return 384 }
@@ -35,6 +35,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     private func currentPrintableWidthMm() -> Double {
         let dots = currentPrintableWidthDots()
         if dots >= 560 { return 72.0 } // 80mm class
+        if dots >= 240 && dots <= 250 { return 48.0 } // TSP100SK 2-inch label printer
         if dots >= 380 { return 48.0 } // 58mm/2-inch class
         return 40.0
     }
@@ -597,6 +598,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     let barcodeSymbology = (barcodeBlock?["symbology"] as? String) ?? "code128"
     let barcodeHeight = (barcodeBlock?["height"] as? Int) ?? 50
     let barcodePrintHRI = (barcodeBlock?["printHRI"] as? Bool) ?? true
+    
+    print("DEBUG: Barcode settings from Dart - content=\(barcodeContent), height=\(barcodeHeight), symbology=\(barcodeSymbology)")
 
         print("Printer is connected, attempting to print with structured layout...")
         
@@ -689,12 +692,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
 
                 // 2.5) Barcode printing (if barcode data is provided)
                 if !barcodeContent.isEmpty {
-                    print("DEBUG: Printing barcode: content=\(barcodeContent), symbology=\(barcodeSymbology), isLabelPrinter=\(isLabelPrinter())")
+                    print("DEBUG: Printing barcode: content=\(barcodeContent), symbology=\(barcodeSymbology), height=\(barcodeHeight)")
                     
-                    let labelPrinter = isLabelPrinter()
-                    
-                    // For label printers, the barcode command might not work properly
-                    // Try using the native barcode command first
                     // Map symbology string to StarXpand BarcodeSymbology enum
                     let symbology: StarXpandCommand.Printer.BarcodeSymbology
                     switch barcodeSymbology.lowercased() {
@@ -717,38 +716,32 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     case "nw7", "codabar":
                         symbology = .nw7
                     default:
-                        symbology = .code128  // Default to CODE128
+                        symbology = .code128
                     }
                     
-                    // Create barcode parameter  
-                    // For narrow label printers, use minimal bar width (2 dots) to fit within print area
+                    // Use simple barcode parameter like the Star sample code
                     let barcodeParam = StarXpandCommand.Printer.BarcodeParameter(content: barcodeContent, symbology: symbology)
-                        .setBarDots(labelPrinter ? 2 : 3)  // Use 2 dots for label printers to fit in narrow width
-                        .setHeight(Double(barcodeHeight))  // Height in dots
-                        .setPrintHRI(barcodePrintHRI)  // Print human-readable interpretation
+                        .setHeight(Double(barcodeHeight))
+                        .setPrintHRI(barcodePrintHRI)
                     
-                    print("DEBUG: Barcode parameters - barDots=\(labelPrinter ? 2 : 3), height=\(barcodeHeight), printableWidth=\(targetDots)")
-                    
-                    // Print barcode centered
+                    // Print barcode with center alignment (like sample)
                     _ = printerBuilder
                         .styleAlignment(.center)
                         .actionPrintBarcode(barcodeParam)
                         .styleAlignment(.left)
                     
-                    _ = printerBuilder.actionFeedLine(1)  // Add spacing after barcode
-                    print("DEBUG: Barcode command added to printer builder (barDots=\(labelPrinter ? 2 : 3))")
+                    print("DEBUG: Barcode command added (height=\(barcodeHeight), printHRI=\(barcodePrintHRI))")
                 }
 
                 // 2.6) Details block below the image/barcode
                 let items = (layout?["items"] as? [[String: Any]]) ?? []
                 let hasAnyDetails = !locationText.isEmpty || !dateText.isEmpty || !timeText.isEmpty || !cashier.isEmpty || !receiptNum.isEmpty || !lane.isEmpty || !footer.isEmpty
                 if hasAnyDetails {
-                    let labelPrinter = isLabelPrinter()
-                    let forceGraphicsDetails = graphicsOnly || labelPrinter
-                    if forceGraphicsDetails {
-                        // For label printers, render details image on a full-width canvas (576) and
-                        // let the printer scale to media width, to match header/small image behavior.
-                        let detailsCanvasDots = labelPrinter ? 576 : targetDots
+                    // Only use image rendering for graphics-only printers (TSP100IIIW)
+                    // Label printers (TSP100SK) support native text commands
+                    if graphicsOnly {
+                        // For label printers, use actual targetDots width for proper rendering
+                        let detailsCanvasDots = targetDots
                         if let detailsImage = createDetailsImage(location: locationText,
                                                                  date: dateText,
                                                                  time: timeText,
@@ -831,16 +824,14 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
 
                 // 3) Body content
                 let trimmedBody = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                let labelPrinter = isLabelPrinter()
-                print("DEBUG: Rendering body content - isLabelPrinter=\(labelPrinter), graphicsOnly=\(graphicsOnly), contentLength=\(trimmedBody.count)")
-                if graphicsOnly || labelPrinter {
-                    // Only render a body image if there's actual non‑whitespace content to avoid
-                    // an empty white rectangle artifact on graphics‑only models (e.g. TSP100III).
-                    // Label printers (like TSP100SK) also need centered image rendering.
+                print("DEBUG: Rendering body content - graphicsOnly=\(graphicsOnly), contentLength=\(trimmedBody.count)")
+                if graphicsOnly {
+                    // Only render a body image for graphics-only models (e.g. TSP100IIIW)
+                    // Label printers (TSP100SK) and receipt printers support native text commands
                     if !trimmedBody.isEmpty,
                        let textImage = createTextImage(text: content, fontSize: 24, imageWidth: CGFloat(targetDots)),
                        let safeText = ensureVisibleImage(textImage, targetWidth: targetDots) {
-                        print("DEBUG: Rendering body as image for label printer")
+                        print("DEBUG: Rendering body as image for graphics-only printer")
                         let param = StarXpandCommand.Printer.ImageParameter(image: safeText, width: targetDots)
                         _ = printerBuilder.actionPrintImage(param)
                         _ = printerBuilder.actionFeedLine(2)
@@ -851,11 +842,21 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     }
                 } else {
                     print("DEBUG: Rendering body as text")
-                    _ = printerBuilder.actionPrintText(content)
+                    // For label printers, center the text content
+                    let labelPrinter = isLabelPrinter()
+                    if labelPrinter {
+                        _ = printerBuilder
+                            .styleAlignment(.center)
+                            .actionPrintText(content)
+                            .styleAlignment(.left)
+                    } else {
+                        _ = printerBuilder.actionPrintText(content)
+                    }
                     _ = printerBuilder.actionFeedLine(2)
                 }
 
                 _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
+                                            .settingPrintableArea(fullWidthMm)
                                             .addPrinter(printerBuilder.actionCut(.partial)))
                 
                 let commands = builder.getCommands()
@@ -1021,6 +1022,62 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 result(diagnostics)
             }
         }
+    }
+    
+    // Helper: create a barcode image using iOS Core Image
+    private func createBarcodeImage(content: String, symbology: String, width: CGFloat, height: CGFloat) -> UIImage? {
+        // Map symbology to CIFilter name
+        let filterName: String
+        switch symbology.lowercased() {
+        case "code128":
+            filterName = "CICode128BarcodeGenerator"
+        case "qr", "qrcode":
+            filterName = "CIQRCodeGenerator"
+        case "pdf417":
+            filterName = "CIPDF417BarcodeGenerator"
+        case "aztec":
+            filterName = "CIAztecCodeGenerator"
+        default:
+            filterName = "CICode128BarcodeGenerator"  // Default to CODE128
+        }
+        
+        guard let filter = CIFilter(name: filterName) else {
+            print("DEBUG: Failed to create barcode filter: \(filterName)")
+            return nil
+        }
+        
+        guard let data = content.data(using: .ascii) else {
+            print("DEBUG: Failed to convert barcode content to ASCII")
+            return nil
+        }
+        
+        filter.setValue(data, forKey: "inputMessage")
+        
+        // For CODE128, we can set inputQuietSpace to reduce/eliminate margins
+        if filterName == "CICode128BarcodeGenerator" {
+            filter.setValue(0.0, forKey: "inputQuietSpace")  // Minimum quiet zone
+        }
+        
+        guard let ciImage = filter.outputImage else {
+            print("DEBUG: Failed to generate barcode CIImage")
+            return nil
+        }
+        
+        // Scale the barcode to desired size
+        let scaleX = width / ciImage.extent.width
+        let scaleY = height / ciImage.extent.height
+        let transformedImage = ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+        
+        // Convert to UIImage
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(transformedImage, from: transformedImage.extent) else {
+            print("DEBUG: Failed to create CGImage from barcode")
+            return nil
+        }
+        
+        let barcodeImage = UIImage(cgImage: cgImage)
+        print("DEBUG: Generated barcode image - size: \(barcodeImage.size.width)x\(barcodeImage.size.height)")
+        return barcodeImage
     }
     
     // Helper: create an image from text with adjustable font/width

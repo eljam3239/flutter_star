@@ -575,6 +575,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     let header = layout?["header"] as? [String: Any]
     let imageBlock = layout?["image"] as? [String: Any]
     let details = layout?["details"] as? [String: Any]
+    let barcodeBlock = layout?["barcode"] as? [String: Any]
 
         // Defaults
         let headerTitle = (header?["title"] as? String) ?? ""
@@ -591,6 +592,11 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     let receiptNum = (details?["receiptNum"] as? String) ?? ""
     let lane = (details?["lane"] as? String) ?? ""
     let footer = (details?["footer"] as? String) ?? ""
+    // Barcode
+    let barcodeContent = (barcodeBlock?["content"] as? String) ?? ""
+    let barcodeSymbology = (barcodeBlock?["symbology"] as? String) ?? "code128"
+    let barcodeHeight = (barcodeBlock?["height"] as? Int) ?? 50
+    let barcodePrintHRI = (barcodeBlock?["printHRI"] as? Bool) ?? true
 
         print("Printer is connected, attempting to print with structured layout...")
         
@@ -681,7 +687,51 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     }
                 }
 
-                // 2.5) Details block below the image
+                // 2.5) Barcode printing (if barcode data is provided)
+                if !barcodeContent.isEmpty {
+                    print("Printing barcode: content=\(barcodeContent), symbology=\(barcodeSymbology)")
+                    
+                    // Map symbology string to StarXpand BarcodeSymbology enum
+                    let symbology: StarXpandCommand.Printer.BarcodeSymbology
+                    switch barcodeSymbology.lowercased() {
+                    case "code128":
+                        symbology = .code128
+                    case "code39":
+                        symbology = .code39
+                    case "code93":
+                        symbology = .code93
+                    case "jan8", "ean8":
+                        symbology = .jan8
+                    case "jan13", "ean13":
+                        symbology = .jan13
+                    case "upca":
+                        symbology = .upcA
+                    case "upce":
+                        symbology = .upcE
+                    case "itf":
+                        symbology = .itf
+                    case "nw7", "codabar":
+                        symbology = .nw7
+                    default:
+                        symbology = .code128  // Default to CODE128
+                    }
+                    
+                    // Create barcode parameter
+                    let barcodeParam = StarXpandCommand.Printer.BarcodeParameter(content: barcodeContent, symbology: symbology)
+                        .setBarDots(3)  // Bar width in dots (3 is medium)
+                        .setHeight(Double(barcodeHeight))  // Height in dots
+                        .setPrintHRI(barcodePrintHRI)  // Print human-readable interpretation
+                    
+                    // Print barcode centered
+                    _ = printerBuilder
+                        .styleAlignment(.center)
+                        .actionPrintBarcode(barcodeParam)
+                        .styleAlignment(.left)
+                    
+                    _ = printerBuilder.actionFeedLine(1)  // Add spacing after barcode
+                }
+
+                // 2.6) Details block below the image/barcode
                 let items = (layout?["items"] as? [[String: Any]]) ?? []
                 let hasAnyDetails = !locationText.isEmpty || !dateText.isEmpty || !timeText.isEmpty || !cashier.isEmpty || !receiptNum.isEmpty || !lane.isEmpty || !footer.isEmpty
                 if hasAnyDetails {

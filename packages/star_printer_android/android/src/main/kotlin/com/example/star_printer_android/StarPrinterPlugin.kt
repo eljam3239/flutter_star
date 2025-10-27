@@ -393,6 +393,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         val imageBlock = layout?.get("image") as? Map<*, *>
         val details = layout?.get("details") as? Map<*, *>
   val items = layout?.get("items") as? List<*>
+  val barcodeBlock = layout?.get("barcode") as? Map<*, *>
 
         val headerTitle = (header?.get("title") as? String)?.trim().orEmpty()
         val headerFontSize = (header?.get("fontSize") as? Number)?.toInt() ?: 32
@@ -408,6 +409,13 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         val cashier = (details?.get("cashier") as? String)?.trim().orEmpty()
         val receiptNum = (details?.get("receiptNum") as? String)?.trim().orEmpty()
         val lane = (details?.get("lane") as? String)?.trim().orEmpty()
+        val footer = (details?.get("footer") as? String)?.trim().orEmpty()
+        
+        // Barcode
+        val barcodeContent = (barcodeBlock?.get("content") as? String)?.trim().orEmpty()
+        val barcodeSymbology = (barcodeBlock?.get("symbology") as? String)?.trim()?.lowercase() ?: "code128"
+        val barcodeHeight = (barcodeBlock?.get("height") as? Number)?.toInt() ?: 50
+        val barcodePrintHRI = (barcodeBlock?.get("printHRI") as? Boolean) ?: true
         val footer = (details?.get("footer") as? String)?.trim().orEmpty()
 
   val graphicsOnly = isGraphicsOnlyPrinter()
@@ -448,7 +456,40 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           }
         }
 
-  // 2.5) Details block (we will later inject items between ruled lines)
+  // 2.5) Barcode printing (if barcode data is provided)
+        if (barcodeContent.isNotEmpty()) {
+          println("Printing barcode: content=$barcodeContent, symbology=$barcodeSymbology")
+          
+          // Map symbology string to StarXpand BarcodeSymbology enum
+          val symbology = when (barcodeSymbology) {
+            "code128" -> BarcodeSymbology.Code128
+            "code39" -> BarcodeSymbology.Code39
+            "code93" -> BarcodeSymbology.Code93
+            "jan8", "ean8" -> BarcodeSymbology.Jan8
+            "jan13", "ean13" -> BarcodeSymbology.Jan13
+            "upca" -> BarcodeSymbology.UPCA
+            "upce" -> BarcodeSymbology.UPCE
+            "itf" -> BarcodeSymbology.ITF
+            "nw7", "codabar" -> BarcodeSymbology.NW7
+            else -> BarcodeSymbology.Code128  // Default to CODE128
+          }
+          
+          // Create barcode parameter
+          val barcodeParam = BarcodeParameter(barcodeContent, symbology)
+            .setBarDots(3)  // Bar width in dots (3 is medium)
+            .setHeight(barcodeHeight.toDouble())  // Height in dots
+            .setPrintHRI(barcodePrintHRI)  // Print human-readable interpretation
+          
+          // Print barcode centered
+          printerBuilder
+            .styleAlignment(Alignment.Center)
+            .actionPrintBarcode(barcodeParam)
+            .styleAlignment(Alignment.Left)
+          
+          printerBuilder.actionFeedLine(1)  // Add spacing after barcode
+        }
+
+  // 2.6) Details block (we will later inject items between ruled lines)
         val hasAnyDetails = listOf(locationText, dateText, timeText, cashier, receiptNum, lane, footer).any { it.isNotEmpty() }
         if (hasAnyDetails) {
           if (graphicsOnly || isLabelPrinter()) {

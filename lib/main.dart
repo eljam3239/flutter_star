@@ -406,6 +406,14 @@ class _MyHomePageState extends State<MyHomePage> {
     
     try {
       print('DEBUG: Creating label print job...');
+      
+      // All centered content for narrow labels
+      final productName = _itemName.isNotEmpty ? _itemName : 'PRODUCT NAME';
+      final qty = _itemQuantity.isNotEmpty ? _itemQuantity : '1';
+      final sku = _receiptNum.isNotEmpty ? _receiptNum : 'SKU123';
+      final price = _itemPrice.isNotEmpty ? _itemPrice : '0.00';
+      final scancode = '0123456789';  // Barcode data
+      
       // Centered label layout optimized for narrow label printers (e.g., TSP100SK)
       final labelSettings = {
         'layout': {
@@ -426,20 +434,18 @@ class _MyHomePageState extends State<MyHomePage> {
           },
           'items': [],
           'image': null,
+          'barcode': {
+            'content': scancode,
+            'symbology': 'code128',  // Using CODE128 as requested
+            'height': 50,  // Height in dots
+            'printHRI': true,  // Print human-readable interpretation below barcode
+          },
         },
       };
-
-      // All centered content for narrow labels
-      final productName = _itemName.isNotEmpty ? _itemName : 'PRODUCT NAME';
-      final qty = _itemQuantity.isNotEmpty ? _itemQuantity : '1';
-      final sku = _receiptNum.isNotEmpty ? _receiptNum : 'SKU123';
-      final price = _itemPrice.isNotEmpty ? _itemPrice : '0.00';
       
       final labelContent = '''
 $productName
 $qty | Green
-
-||||||||||||||||
 
 $sku
 \$$price

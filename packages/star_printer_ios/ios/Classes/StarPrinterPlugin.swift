@@ -18,7 +18,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         // ADJUST THIS VALUE if labels are still being cut off:
         // - If content is cut off on right: decrease this number (try 220, 200, etc.)
         // - If content appears too narrow with margins: increase this number (try 260, 280, etc.)
-        let tsp100skWidth = 240  // Optimized for TSP100SK label printing
+        let tsp100skWidth = 256  // Optimized for TSP100SK label printing
         
         if name.contains("mpop") { return 384 }
         if name.contains("mc_label2") || name.contains("mc-label2") { return 384 }
@@ -45,6 +45,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         let dots = currentPrintableWidthDots()
         if dots >= 560 { return 48 }
         if dots >= 380 { return 32 }
+        // TSP100SK with 240 dots - at standard font (~12 dots/char), can fit ~20 chars
+        if dots >= 240 { return 32 }  // Use 32 to match standard 2-inch printers
         return 24
     }
 
@@ -593,6 +595,11 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     let receiptNum = (details?["receiptNum"] as? String) ?? ""
     let lane = (details?["lane"] as? String) ?? ""
     let footer = (details?["footer"] as? String) ?? ""
+    // Label-specific details
+    let category = (details?["category"] as? String) ?? ""
+    let size = (details?["size"] as? String) ?? ""
+    let color = (details?["color"] as? String) ?? ""
+    let labelPrice = (details?["price"] as? String) ?? ""
     // Barcode
     let barcodeContent = (barcodeBlock?["content"] as? String) ?? ""
     let barcodeSymbology = (barcodeBlock?["symbology"] as? String) ?? "code128"
@@ -690,48 +697,11 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     }
                 }
 
-                // 2.5) Barcode printing (if barcode data is provided)
-                if !barcodeContent.isEmpty {
-                    print("DEBUG: Printing barcode: content=\(barcodeContent), symbology=\(barcodeSymbology), height=\(barcodeHeight)")
-                    
-                    // Map symbology string to StarXpand BarcodeSymbology enum
-                    let symbology: StarXpandCommand.Printer.BarcodeSymbology
-                    switch barcodeSymbology.lowercased() {
-                    case "code128":
-                        symbology = .code128
-                    case "code39":
-                        symbology = .code39
-                    case "code93":
-                        symbology = .code93
-                    case "jan8", "ean8":
-                        symbology = .jan8
-                    case "jan13", "ean13":
-                        symbology = .jan13
-                    case "upca":
-                        symbology = .upcA
-                    case "upce":
-                        symbology = .upcE
-                    case "itf":
-                        symbology = .itf
-                    case "nw7", "codabar":
-                        symbology = .nw7
-                    default:
-                        symbology = .code128
-                    }
-                    
-                    // Use simple barcode parameter like the Star sample code
-                    let barcodeParam = StarXpandCommand.Printer.BarcodeParameter(content: barcodeContent, symbology: symbology)
-                        .setHeight(Double(barcodeHeight))
-                        .setPrintHRI(barcodePrintHRI)
-                    
-                    // Print barcode with center alignment (like sample)
-                    _ = printerBuilder
-                        .styleAlignment(.center)
-                        .actionPrintBarcode(barcodeParam)
-                        .styleAlignment(.left)
-                    
-                    print("DEBUG: Barcode command added (height=\(barcodeHeight), printHRI=\(barcodePrintHRI))")
-                }
+                // Store barcode info for later (print at end for labels)
+                let hasBarcodeData = !barcodeContent.isEmpty
+                let barcodeSymbology_stored = barcodeSymbology
+                let barcodeHeight_stored = barcodeHeight
+                let barcodePrintHRI_stored = barcodePrintHRI
 
                 // 2.6) Details block below the image/barcode
                 let items = (layout?["items"] as? [[String: Any]]) ?? []
@@ -822,10 +792,90 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     }
                 }
 
-                // 3) Body content
+                // 3) Body content or Label template
                 let trimmedBody = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                print("DEBUG: Rendering body content - graphicsOnly=\(graphicsOnly), contentLength=\(trimmedBody.count)")
-                if graphicsOnly {
+                let labelPrinter = isLabelPrinter()
+                
+                // Check if this is a label template (has label-specific fields)
+                let hasLabelFields = !category.isEmpty || !size.isEmpty || !color.isEmpty || !labelPrice.isEmpty
+                
+                print("DEBUG: Rendering body content - graphicsOnly=\(graphicsOnly), labelPrinter=\(labelPrinter), hasLabelFields=\(hasLabelFields), contentLength=\(trimmedBody.count)")
+                
+                if labelPrinter && hasLabelFields {
+                    // Label template rendering
+                    print("DEBUG: Rendering label template")
+                    
+                    // Category (centered, below header)
+                    if !category.isEmpty {
+                        _ = printerBuilder
+                            .styleAlignment(.center)
+                            .actionPrintText("\(category)\n")
+                            .styleAlignment(.left)
+                    }
+                    
+                    // Size (left, normal size)
+                    if !size.isEmpty {
+                        _ = printerBuilder.actionPrintText("\(size)\n")
+                    }
+                    
+                    // Color (left) and Price (right, magnified) on same line
+                    // Use simple left-aligned text for color and right-aligned magnified price
+                    if !color.isEmpty {
+                        _ = printerBuilder.actionPrintText("\(color)\n")
+                    }
+                    
+                    if !labelPrice.isEmpty {
+                        _ = printerBuilder
+                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
+                            .styleAlignment(.right)
+                            .actionPrintText("$\(labelPrice)\n")
+                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
+                            .styleAlignment(.left)
+                    }
+                    
+                    _ = printerBuilder.actionFeedLine(1)
+                    
+                    // Now print barcode at the bottom for labels
+                    if hasBarcodeData {
+                        print("DEBUG: Printing barcode at bottom: content=\(barcodeContent), symbology=\(barcodeSymbology_stored), height=\(barcodeHeight_stored)")
+                        
+                        let symbology: StarXpandCommand.Printer.BarcodeSymbology
+                        switch barcodeSymbology_stored.lowercased() {
+                        case "code128":
+                            symbology = .code128
+                        case "code39":
+                            symbology = .code39
+                        case "code93":
+                            symbology = .code93
+                        case "jan8", "ean8":
+                            symbology = .jan8
+                        case "jan13", "ean13":
+                            symbology = .jan13
+                        case "upca":
+                            symbology = .upcA
+                        case "upce":
+                            symbology = .upcE
+                        case "itf":
+                            symbology = .itf
+                        case "nw7", "codabar":
+                            symbology = .nw7
+                        default:
+                            symbology = .code128
+                        }
+                        
+                        let barcodeParam = StarXpandCommand.Printer.BarcodeParameter(content: barcodeContent, symbology: symbology)
+                            .setHeight(Double(barcodeHeight_stored))
+                            .setPrintHRI(barcodePrintHRI_stored)
+                        
+                        _ = printerBuilder
+                            .styleAlignment(.center)
+                            .actionPrintBarcode(barcodeParam)
+                            .styleAlignment(.left)
+                        
+                        print("DEBUG: Barcode command added at bottom")
+                    }
+                    
+                } else if graphicsOnly {
                     // Only render a body image for graphics-only models (e.g. TSP100IIIW)
                     // Label printers (TSP100SK) and receipt printers support native text commands
                     if !trimmedBody.isEmpty,
@@ -843,7 +893,6 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 } else {
                     print("DEBUG: Rendering body as text")
                     // For label printers, center the text content
-                    let labelPrinter = isLabelPrinter()
                     if labelPrinter {
                         _ = printerBuilder
                             .styleAlignment(.center)
@@ -853,11 +902,52 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         _ = printerBuilder.actionPrintText(content)
                     }
                     _ = printerBuilder.actionFeedLine(2)
+                    
+                    // Print barcode for non-label receipts
+                    if hasBarcodeData && !labelPrinter {
+                        print("DEBUG: Printing barcode for receipt: content=\(barcodeContent)")
+                        
+                        let symbology: StarXpandCommand.Printer.BarcodeSymbology
+                        switch barcodeSymbology_stored.lowercased() {
+                        case "code128":
+                            symbology = .code128
+                        case "code39":
+                            symbology = .code39
+                        case "code93":
+                            symbology = .code93
+                        case "jan8", "ean8":
+                            symbology = .jan8
+                        case "jan13", "ean13":
+                            symbology = .jan13
+                        case "upca":
+                            symbology = .upcA
+                        case "upce":
+                            symbology = .upcE
+                        case "itf":
+                            symbology = .itf
+                        case "nw7", "codabar":
+                            symbology = .nw7
+                        default:
+                            symbology = .code128
+                        }
+                        
+                        let barcodeParam = StarXpandCommand.Printer.BarcodeParameter(content: barcodeContent, symbology: symbology)
+                            .setHeight(Double(barcodeHeight_stored))
+                            .setPrintHRI(barcodePrintHRI_stored)
+                        
+                        _ = printerBuilder
+                            .styleAlignment(.center)
+                            .actionPrintBarcode(barcodeParam)
+                            .styleAlignment(.left)
+                    }
                 }
 
-                _ = builder.addDocument(StarXpandCommand.DocumentBuilder()
-                                            .settingPrintableArea(fullWidthMm)
-                                            .addPrinter(printerBuilder.actionCut(.partial)))
+                // Build document - for label printers, don't set printable area to avoid margins
+                let docBuilder = StarXpandCommand.DocumentBuilder()
+                if !labelPrinter {
+                    _ = docBuilder.settingPrintableArea(fullWidthMm)
+                }
+                _ = builder.addDocument(docBuilder.addPrinter(printerBuilder.actionCut(.partial)))
                 
                 let commands = builder.getCommands()
                 print("Generated commands: \(commands)")

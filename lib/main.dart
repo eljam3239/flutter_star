@@ -409,28 +409,29 @@ class _MyHomePageState extends State<MyHomePage> {
       
       // All centered content for narrow labels
       final productName = _itemName.isNotEmpty ? _itemName : 'PRODUCT NAME';
+      final category = 'Top';  // or get from a field
       final qty = _itemQuantity.isNotEmpty ? _itemQuantity : '1';
       final sku = _receiptNum.isNotEmpty ? _receiptNum : 'SKU123';
       final price = _itemPrice.isNotEmpty ? _itemPrice : '0.00';
       final scancode = '0123456789';  // Barcode data
+      final size = 'Small';
+      final color = 'Blush Floral';
+
       
       // Centered label layout optimized for narrow label printers (e.g., TSP100SK)
       final labelSettings = {
         'layout': {
           'header': {
-            'title': '',
+            'title': productName,
             'align': 'center',
-            'fontSize': 48,
+            'fontSize': 40,
             'spacingLines': 0,
           },
           'details': {
-            'locationText': '',
-            'date': '',
-            'time': '',
-            'cashier': '',
-            'receiptNum': '',
-            'lane': '',
-            'footer': '',
+            'category': category,
+            'size': size,
+            'color': color,
+            'price': price,
           },
           'items': [],
           'image': null,
@@ -438,18 +439,16 @@ class _MyHomePageState extends State<MyHomePage> {
             'content': scancode,
             'symbology': 'code128',  // Using CODE128 as requested
             'height': 8,  // Very compact barcode height (90% shorter than default ~50)
-            'printHRI': false,  // Don't print numbers below barcode to save vertical space
+            'printHRI': true,  // Don't print numbers below barcode to save vertical space
           },
         },
       };
       
-      final labelContent = '''
-$productName
-$qty - Green
-
-$sku
-\$$price
-''';
+      final labelContent = ''; //'''
+// $productName
+// $qty | Green
+// \$$price
+// ''';
 
       final printJob = PrintJob(
         content: labelContent,

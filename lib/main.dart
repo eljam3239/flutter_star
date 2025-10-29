@@ -68,6 +68,9 @@ class _MyHomePageState extends State<MyHomePage> {
   String _printerStatus = 'Unknown';
   String? _selectedPrinter; // Add selected printer tracking
   bool _openDrawerAfterPrint = true; // Option to auto-open drawer after printing
+  
+  // Label printer paper width selector
+  int _labelPaperWidthMm = 58; // Default to 58mm
 
   // Receipt layout controls (for integration into POS app)
   String _headerTitle = "Wendy's";
@@ -407,18 +410,32 @@ class _MyHomePageState extends State<MyHomePage> {
     try {
       print('DEBUG: Creating label print job...');
       
+      // Calculate printable area based on paper width
+      // 38mm -> 34.5mm printable, 58mm -> 51mm printable, 80mm -> 72mm printable
+      double printableAreaMm;
+      String layoutType;
+      
+      if (_labelPaperWidthMm == 38) {
+        printableAreaMm = 34.5;
+        layoutType = 'vertical_centered';  // Everything vertical and centered for narrow labels
+      } else if (_labelPaperWidthMm == 58) {
+        printableAreaMm = 51.0;
+        layoutType = 'mixed';  // Mixed layout with some horizontal elements
+      } else {
+        printableAreaMm = 72.0;
+        layoutType = 'horizontal';  // Full horizontal layout for wide labels
+      }
+      
       // All centered content for narrow labels
       final productName = _itemName.isNotEmpty ? _itemName : 'PRODUCT NAME';
       final category = 'Top';  // or get from a field
-      final qty = _itemQuantity.isNotEmpty ? _itemQuantity : '1';
-      final sku = _receiptNum.isNotEmpty ? _receiptNum : 'SKU123';
       final price = _itemPrice.isNotEmpty ? _itemPrice : '0.00';
       final scancode = '0123456789';  // Barcode data
       final size = 'Small';
       final color = 'Blush Floral';
 
       
-      // Centered label layout optimized for narrow label printers (e.g., TSP100SK)
+      // Label layout based on paper width
       final labelSettings = {
         'layout': {
           'header': {
@@ -432,6 +449,8 @@ class _MyHomePageState extends State<MyHomePage> {
             'size': size,
             'color': color,
             'price': price,
+            'layoutType': layoutType,  // Tell native code which template to use
+            'printableAreaMm': printableAreaMm,  // Pass printable area to native code
           },
           'items': [],
           'image': null,
@@ -1014,6 +1033,59 @@ class _MyHomePageState extends State<MyHomePage> {
                         ),
                       ),
                     ]),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Label Printer Settings',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('How Big Is Your Label Printer Paper?', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Radio<int>(
+                          value: 38,
+                          groupValue: _labelPaperWidthMm,
+                          onChanged: (int? value) {
+                            setState(() {
+                              _labelPaperWidthMm = value ?? 58;
+                            });
+                          },
+                        ),
+                        const Text('38mm (1.5")'),
+                        const SizedBox(width: 16),
+                        Radio<int>(
+                          value: 58,
+                          groupValue: _labelPaperWidthMm,
+                          onChanged: (int? value) {
+                            setState(() {
+                              _labelPaperWidthMm = value ?? 58;
+                            });
+                          },
+                        ),
+                        const Text('58mm (2.25")'),
+                        const SizedBox(width: 16),
+                        Radio<int>(
+                          value: 80,
+                          groupValue: _labelPaperWidthMm,
+                          onChanged: (int? value) {
+                            setState(() {
+                              _labelPaperWidthMm = value ?? 58;
+                            });
+                          },
+                        ),
+                        const Text('80mm (3.15")'),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _labelPaperWidthMm == 38 
+                          ? 'Printable area: 34.5mm (vertical layout, all centered)'
+                          : _labelPaperWidthMm == 58
+                              ? 'Printable area: 51mm (mixed layout)'
+                              : 'Printable area: 72mm (horizontal layout)',
+                      style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey),
+                    ),
                     const SizedBox(height: 16),
                     Text('Connection Status: ${_isConnected ? "Connected" : "Disconnected"}'),
                     const SizedBox(height: 8),

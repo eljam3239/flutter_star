@@ -600,6 +600,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     let size = (details?["size"] as? String) ?? ""
     let color = (details?["color"] as? String) ?? ""
     let labelPrice = (details?["price"] as? String) ?? ""
+    let layoutType = (details?["layoutType"] as? String) ?? "mixed"  // vertical_centered, mixed, or horizontal
+    let printableAreaMm = (details?["printableAreaMm"] as? Double) ?? 51.0  // Default to 58mm paper
     // Barcode
     let barcodeContent = (barcodeBlock?["content"] as? String) ?? ""
     let barcodeSymbology = (barcodeBlock?["symbology"] as? String) ?? "code128"
@@ -607,6 +609,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     let barcodePrintHRI = (barcodeBlock?["printHRI"] as? Bool) ?? true
     
     print("DEBUG: Barcode settings from Dart - content=\(barcodeContent), height=\(barcodeHeight), symbology=\(barcodeSymbology)")
+    print("DEBUG: Label layout - type=\(layoutType), printableArea=\(printableAreaMm)mm")
 
         print("Printer is connected, attempting to print with structured layout...")
         
@@ -655,9 +658,24 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
 
                 // Build printer actions according to layout (follow Star sample structure)
                 let printerBuilder = StarXpandCommand.PrinterBuilder()
-                // Use detected printable width per model
-                let targetDots = currentPrintableWidthDots()
-                let fullWidthMm: Double = currentPrintableWidthMm()
+                
+                // For label printers, use the printable area from settings
+                // For receipt printers, use auto-detected width
+                let labelPrinter = isLabelPrinter()
+                let targetDots: Int
+                let fullWidthMm: Double
+                
+                if labelPrinter && printableAreaMm > 0 {
+                    // Calculate dots from mm: 203 DPI = 8 dots per mm
+                    targetDots = Int(printableAreaMm * 8.0)
+                    fullWidthMm = printableAreaMm
+                    print("DEBUG: Using label printable area: \(printableAreaMm)mm = \(targetDots) dots")
+                } else {
+                    // Use auto-detected width for receipts
+                    targetDots = currentPrintableWidthDots()
+                    fullWidthMm = currentPrintableWidthMm()
+                    print("DEBUG: Using auto-detected width: \(fullWidthMm)mm = \(targetDots) dots")
+                }
 
                 // 1) Header: print as image (simple UIImage like the sample)
                 if !headerTitle.isEmpty {
@@ -794,7 +812,6 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
 
                 // 3) Body content or Label template
                 let trimmedBody = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                let labelPrinter = isLabelPrinter()
                 
                 // Check if this is a label template (has label-specific fields)
                 let hasLabelFields = !category.isEmpty || !size.isEmpty || !color.isEmpty || !labelPrice.isEmpty
@@ -803,57 +820,85 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 
                 if labelPrinter && hasLabelFields {
                     // Label template rendering
-                    print("DEBUG: Rendering label template")
+                    print("DEBUG: Rendering label template with layout: \(layoutType)")
                     
-                    // Category (centered, below header)
-                    if !category.isEmpty {
-                        _ = printerBuilder
-                            .styleAlignment(.center)
-                            .actionPrintText("\(category)\n")
-                            .styleAlignment(.left)
+                    if layoutType == "vertical_centered" {
+                        // 38mm paper (34.5mm printable) - everything vertical and centered
+                        if !category.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(category)\n")
+                        }
+                        
+                        if !size.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(size)\n")
+                        }
+                        
+                        if !color.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(color)\n")
+                        }
+                        
+                        if !labelPrice.isEmpty {
+                            _ = printerBuilder
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
+                                .styleAlignment(.center)
+                                .actionPrintText("$\(labelPrice)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
+                        }
+                    } else {
+                        // Mixed or horizontal layouts (58mm/80mm paper)
+                        // Category (centered, below header)
+                        if !category.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(category)\n")
+                                .styleAlignment(.left)
+                        }
+                        
+                        // Size (left, normal size)
+                        if !size.isEmpty {
+                            _ = printerBuilder.actionPrintText("\(size)\n")
+                        }
+                        
+                        // Color (left) and Price (right) on SAME line
+                        if !color.isEmpty && !labelPrice.isEmpty {
+                            let colorText = color
+                            let priceText = "$\(labelPrice)"
+                            
+                            // Calculate padding to align price to the right
+                            // Assuming ~32 characters width for 256-dot printer in normal size
+                            // Price is 2x magnified, so it takes 2x the space per character
+                            let priceChars = priceText.count * 2  // Each char is doubled in width
+                            let colorChars = colorText.count
+                            let totalWidth = 32
+                            let paddingNeeded = max(0, totalWidth - colorChars - priceChars)
+                            let padding = String(repeating: " ", count: paddingNeeded)
+                            
+                            // Print color normally
+                            _ = printerBuilder.actionPrintText(colorText + padding)
+                            
+                            // Print price magnified on same line
+                            _ = printerBuilder
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
+                                .actionPrintText("\(priceText)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
+                        } else if !color.isEmpty {
+                            _ = printerBuilder.actionPrintText("\(color)\n")
+                        } else if !labelPrice.isEmpty {
+                            _ = printerBuilder
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
+                                .styleAlignment(.right)
+                                .actionPrintText("$\(labelPrice)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
+                                .styleAlignment(.left)
+                        }
                     }
                     
-                    // Size (left, normal size)
-                    if !size.isEmpty {
-                        _ = printerBuilder.actionPrintText("\(size)\n")
-                    }
-                    
-                    // Color (left) and Price (right) on SAME line
-                    if !color.isEmpty && !labelPrice.isEmpty {
-                        let colorText = color
-                        let priceText = "$\(labelPrice)"
-                        
-                        // Calculate padding to align price to the right
-                        // Assuming ~32 characters width for 256-dot printer in normal size
-                        // Price is 2x magnified, so it takes 2x the space per character
-                        let priceChars = priceText.count * 2  // Each char is doubled in width
-                        let colorChars = colorText.count
-                        let totalWidth = 32
-                        let paddingNeeded = max(0, totalWidth - colorChars - priceChars)
-                        let padding = String(repeating: " ", count: paddingNeeded)
-                        
-                        // Print color normally
-                        _ = printerBuilder.actionPrintText(colorText + padding)
-                        
-                        // Print price magnified on same line
-                        _ = printerBuilder
-                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
-                            .actionPrintText("\(priceText)\n")
-                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
-                    } else if !color.isEmpty {
-                        _ = printerBuilder.actionPrintText("\(color)\n")
-                    } else if !labelPrice.isEmpty {
-                        _ = printerBuilder
-                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
-                            .styleAlignment(.right)
-                            .actionPrintText("$\(labelPrice)\n")
-                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
-                            .styleAlignment(.left)
-                    }
-                    
-                    _ = printerBuilder.actionFeedLine(1)
-                    
-                    // Now print barcode at the bottom for labels
+                    // Now print barcode at the bottom for labels (no extra spacing)
                     if hasBarcodeData {
                         print("DEBUG: Printing barcode at bottom: content=\(barcodeContent), symbology=\(barcodeSymbology_stored), height=\(barcodeHeight_stored)")
                         
@@ -960,9 +1005,14 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     }
                 }
 
-                // Build document - for label printers, don't set printable area to avoid margins
+                // Build document - set printable area based on paper width
                 let docBuilder = StarXpandCommand.DocumentBuilder()
-                if !labelPrinter {
+                if labelPrinter {
+                    // For label printers, use the printable area specified by the user
+                    _ = docBuilder.settingPrintableArea(printableAreaMm)
+                    print("DEBUG: Set label printable area to \(printableAreaMm)mm")
+                } else {
+                    // For receipt printers, use full width
                     _ = docBuilder.settingPrintableArea(fullWidthMm)
                 }
                 _ = builder.addDocument(docBuilder.addPrinter(printerBuilder.actionCut(.partial)))
@@ -1224,7 +1274,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
             .paragraphStyle: paragraphStyle
         ]
 
-        let bounds = CGSize(width: imageWidth - 40, height: CGFloat.greatestFiniteMagnitude)
+        let bounds = CGSize(width: imageWidth - 10, height: CGFloat.greatestFiniteMagnitude)
         let textSize = filteredText.boundingRect(
             with: bounds,
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -1232,7 +1282,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
             context: nil
         ).size
 
-        let imageHeight = max(textSize.height + 40, 100)
+        let imageHeight = textSize.height + 10  // Minimal padding - just 5px top and bottom
         let imageSize = CGSize(width: imageWidth, height: imageHeight)
 
         UIGraphicsBeginImageContextWithOptions(imageSize, true, 1.0)
@@ -1243,7 +1293,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         context.setFillColor(backgroundColor.cgColor)
         context.fill(CGRect(origin: .zero, size: imageSize))
 
-        let textRect = CGRect(x: 20, y: 20, width: imageWidth - 40, height: textSize.height)
+        let textRect = CGRect(x: 5, y: 5, width: imageWidth - 10, height: textSize.height)  // Just 5px padding all around
         filteredText.draw(in: textRect, withAttributes: textAttributes)
 
         guard let image = UIGraphicsGetImageFromCurrentImageContext() else {

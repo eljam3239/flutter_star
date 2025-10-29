@@ -18,7 +18,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         // ADJUST THIS VALUE if labels are still being cut off:
         // - If content is cut off on right: decrease this number (try 220, 200, etc.)
         // - If content appears too narrow with margins: increase this number (try 260, 280, etc.)
-        let tsp100skWidth = 256  // Optimized for TSP100SK label printing
+        let tsp100skWidth = 576  // Optimized for TSP100SK label printing
         
         if name.contains("mpop") { return 384 }
         if name.contains("mc_label2") || name.contains("mc-label2") { return 384 }
@@ -818,13 +818,31 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         _ = printerBuilder.actionPrintText("\(size)\n")
                     }
                     
-                    // Color (left) and Price (right, magnified) on same line
-                    // Use simple left-aligned text for color and right-aligned magnified price
-                    if !color.isEmpty {
+                    // Color (left) and Price (right) on SAME line
+                    if !color.isEmpty && !labelPrice.isEmpty {
+                        let colorText = color
+                        let priceText = "$\(labelPrice)"
+                        
+                        // Calculate padding to align price to the right
+                        // Assuming ~32 characters width for 256-dot printer in normal size
+                        // Price is 2x magnified, so it takes 2x the space per character
+                        let priceChars = priceText.count * 2  // Each char is doubled in width
+                        let colorChars = colorText.count
+                        let totalWidth = 32
+                        let paddingNeeded = max(0, totalWidth - colorChars - priceChars)
+                        let padding = String(repeating: " ", count: paddingNeeded)
+                        
+                        // Print color normally
+                        _ = printerBuilder.actionPrintText(colorText + padding)
+                        
+                        // Print price magnified on same line
+                        _ = printerBuilder
+                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
+                            .actionPrintText("\(priceText)\n")
+                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
+                    } else if !color.isEmpty {
                         _ = printerBuilder.actionPrintText("\(color)\n")
-                    }
-                    
-                    if !labelPrice.isEmpty {
+                    } else if !labelPrice.isEmpty {
                         _ = printerBuilder
                             .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
                             .styleAlignment(.right)

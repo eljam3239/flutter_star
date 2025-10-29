@@ -428,7 +428,7 @@ class _MyHomePageState extends State<MyHomePage> {
       
       // All centered content for narrow labels
       final productName = _itemName.isNotEmpty ? _itemName : 'PRODUCT NAME';
-      final category = 'Top';  // or get from a field
+      final category = '';  // or get from a field
       final price = _itemPrice.isNotEmpty ? _itemPrice : '0.00';
       final scancode = '0123456789';  // Barcode data
       final size = 'Small';
@@ -457,7 +457,7 @@ class _MyHomePageState extends State<MyHomePage> {
           'barcode': {
             'content': scancode,
             'symbology': 'code128',  // Using CODE128 as requested
-            'height': 8,  // Very compact barcode height (90% shorter than default ~50)
+            'height': 4,  // Very compact barcode height (90% shorter than default ~50)
             'printHRI': true,  // Don't print numbers below barcode to save vertical space
           },
         },

@@ -677,17 +677,29 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     print("DEBUG: Using auto-detected width: \(fullWidthMm)mm = \(targetDots) dots")
                 }
 
-                // 1) Header: print as image (simple UIImage like the sample)
+                // 1) Header: print as bold text instead of image for labels
                 if !headerTitle.isEmpty {
-                    if let headerImageRaw = createTextImage(text: headerTitle, fontSize: headerFontSize, imageWidth: CGFloat(targetDots)),
-                       let headerFlat = flattenImage(headerImageRaw, targetWidth: targetDots) {
-                        print("Printing header image at width=\(targetDots) (flattened UIImage)")
-                        let param = StarXpandCommand.Printer.ImageParameter(image: headerFlat, width: targetDots)
+                    if labelPrinter {
+                        // For labels, use bold text instead of image
                         _ = printerBuilder
                             .styleAlignment(.center)
-                            .actionPrintImage(param)
+                            .styleBold(true)
+                            .actionPrintText("\(headerTitle)\n")
+                            .styleBold(false)
                             .styleAlignment(.left)
                         if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
+                    } else {
+                        // For receipts, keep using image
+                        if let headerImageRaw = createTextImage(text: headerTitle, fontSize: headerFontSize, imageWidth: CGFloat(targetDots)),
+                           let headerFlat = flattenImage(headerImageRaw, targetWidth: targetDots) {
+                            print("Printing header image at width=\(targetDots) (flattened UIImage)")
+                            let param = StarXpandCommand.Printer.ImageParameter(image: headerFlat, width: targetDots)
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintImage(param)
+                                .styleAlignment(.left)
+                            if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
+                        }
                     }
                 }
 
@@ -830,13 +842,17 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                                 .actionPrintText("\(category)\n")
                         }
                         
-                        if !size.isEmpty {
+                        // Size and Color on same line, centered
+                        if !size.isEmpty && !color.isEmpty {
+                            let combined = "\(size) - \(color)"
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(combined)\n")
+                        } else if !size.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
                                 .actionPrintText("\(size)\n")
-                        }
-                        
-                        if !color.isEmpty {
+                        } else if !color.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
                                 .actionPrintText("\(color)\n")
@@ -844,10 +860,10 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         
                         if !labelPrice.isEmpty {
                             _ = printerBuilder
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
                                 .styleAlignment(.center)
+                                .styleBold(true)
                                 .actionPrintText("$\(labelPrice)\n")
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
+                                .styleBold(false)
                         }
                     } else {
                         // Mixed or horizontal layouts (58mm/80mm paper)
@@ -870,30 +886,26 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                             let priceText = "$\(labelPrice)"
                             
                             // Calculate padding to align price to the right
-                            // Assuming ~32 characters width for 256-dot printer in normal size
-                            // Price is 2x magnified, so it takes 2x the space per character
-                            let priceChars = priceText.count * 2  // Each char is doubled in width
                             let colorChars = colorText.count
+                            let priceChars = priceText.count
                             let totalWidth = 32
                             let paddingNeeded = max(0, totalWidth - colorChars - priceChars)
                             let padding = String(repeating: " ", count: paddingNeeded)
                             
-                            // Print color normally
-                            _ = printerBuilder.actionPrintText(colorText + padding)
-                            
-                            // Print price magnified on same line
+                            // Print color normally, then price bold on same line
                             _ = printerBuilder
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
+                                .actionPrintText(colorText + padding)
+                                .styleBold(true)
                                 .actionPrintText("\(priceText)\n")
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
+                                .styleBold(false)
                         } else if !color.isEmpty {
                             _ = printerBuilder.actionPrintText("\(color)\n")
                         } else if !labelPrice.isEmpty {
                             _ = printerBuilder
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 2, height: 2))
                                 .styleAlignment(.right)
+                                .styleBold(true)
                                 .actionPrintText("$\(labelPrice)\n")
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
+                                .styleBold(false)
                                 .styleAlignment(.left)
                         }
                     }

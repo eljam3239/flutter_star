@@ -680,25 +680,14 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 // 1) Header: print as bold text instead of image for labels
                 if !headerTitle.isEmpty {
                     if labelPrinter {
-                        // For mixed layout, combine header with price on same line
-                        if layoutType == "mixed" && !labelPrice.isEmpty {
-                            _ = printerBuilder
-                                .styleAlignment(.center)
-                                .styleBold(true)
-                                .actionPrintText("\(headerTitle)     $\(labelPrice)\n")
-                                .styleBold(false)
-                                .styleAlignment(.left)
-                            if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
-                        } else {
-                            // For other layouts, use bold text for header only
-                            _ = printerBuilder
-                                .styleAlignment(.center)
-                                .styleBold(true)
-                                .actionPrintText("\(headerTitle)\n")
-                                .styleBold(false)
-                                .styleAlignment(.left)
-                            if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
-                        }
+                        // For labels, use bold text instead of image
+                        _ = printerBuilder
+                            .styleAlignment(.center)
+                            .styleBold(true)
+                            .actionPrintText("\(headerTitle)\n")
+                            .styleBold(false)
+                            .styleAlignment(.left)
+                        if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
                     } else {
                         // For receipts, keep using image
                         if let headerImageRaw = createTextImage(text: headerTitle, fontSize: headerFontSize, imageWidth: CGFloat(targetDots)),
@@ -878,7 +867,23 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         }
                     } else if layoutType == "mixed" {
                         // 58mm paper (51mm printable) - optimized horizontal layout
-                        // Category and Price already printed in header section, skip here
+                        // Category centered below header (skip if already in header)
+                        if !category.isEmpty && category != headerTitle {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(category)\n")
+                                .styleAlignment(.left)
+                        }
+                        
+                        // Price centered on its own line (bold)
+                        if !labelPrice.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .styleBold(true)
+                                .actionPrintText("$\(labelPrice)\n")
+                                .styleBold(false)
+                                .styleAlignment(.left)
+                        }
                         
                         // Size and Color on one line, centered (no pipes)
                         var combinedLine = ""

@@ -842,28 +842,30 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                                 .actionPrintText("\(category)\n")
                         }
                         
-                        // Size and Color on same line, centered
-                        if !size.isEmpty && !color.isEmpty {
-                            let combined = "\(size) - \(color)"
-                            _ = printerBuilder
-                                .styleAlignment(.center)
-                                .actionPrintText("\(combined)\n")
-                        } else if !size.isEmpty {
-                            _ = printerBuilder
-                                .styleAlignment(.center)
-                                .actionPrintText("\(size)\n")
-                        } else if !color.isEmpty {
-                            _ = printerBuilder
-                                .styleAlignment(.center)
-                                .actionPrintText("\(color)\n")
-                        }
-                        
                         if !labelPrice.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
                                 .styleBold(true)
                                 .actionPrintText("$\(labelPrice)\n")
                                 .styleBold(false)
+                        }
+                        // Size and Color on same line, centered
+                        var combinedLine = ""
+                        if !size.isEmpty {
+                            combinedLine += size
+                        }
+                        if !color.isEmpty {
+                            if !combinedLine.isEmpty {
+                                combinedLine += "  "
+                            }
+                            combinedLine += color
+                        }
+                        
+                        if !combinedLine.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(combinedLine)\n")
+                                .styleAlignment(.left)
                         }
                     } else if layoutType == "mixed" {
                         // 58mm paper (51mm printable) - optimized horizontal layout

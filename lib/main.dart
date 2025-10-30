@@ -71,6 +71,7 @@ class _MyHomePageState extends State<MyHomePage> {
   
   // Label printer paper width selector
   int _labelPaperWidthMm = 58; // Default to 58mm
+  int _labelQuantity = 1; // Number of labels to print
 
   // Receipt layout controls (for integration into POS app)
   String _headerTitle = "Wendy's";
@@ -408,7 +409,7 @@ class _MyHomePageState extends State<MyHomePage> {
     print('DEBUG: Print label button pressed');
     
     try {
-      print('DEBUG: Creating label print job...');
+      print('DEBUG: Creating label print job for $_labelQuantity label(s)...');
       
       // Calculate printable area based on paper width
       // 38mm -> 34.5mm printable, 58mm -> 51mm printable, 80mm -> 72mm printable
@@ -474,12 +475,20 @@ class _MyHomePageState extends State<MyHomePage> {
         settings: labelSettings,
       );
       
-      print('DEBUG: Sending label print job to printer...');
-      await StarPrinter.printReceipt(printJob);
+      // Print multiple labels
+      for (int i = 0; i < _labelQuantity; i++) {
+        print('DEBUG: Sending label ${i + 1} of $_labelQuantity to printer...');
+        await StarPrinter.printReceipt(printJob);
+        
+        // Small delay between prints to prevent buffer overflow
+        if (i < _labelQuantity - 1) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      }
       
-      print('DEBUG: Label print completed successfully');
+      print('DEBUG: All $_labelQuantity label(s) printed successfully');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Label printed successfully')),
+        SnackBar(content: Text('$_labelQuantity label(s) printed successfully')),
       );
     } catch (e) {
       print('DEBUG: Label print failed with error: $e');
@@ -1085,6 +1094,39 @@ class _MyHomePageState extends State<MyHomePage> {
                               ? 'Printable area: 51mm (mixed layout)'
                               : 'Printable area: 72mm (horizontal layout)',
                       style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Number of Labels to Print:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 100,
+                          child: TextField(
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Quantity',
+                              border: OutlineInputBorder(),
+                            ),
+                            controller: TextEditingController(text: _labelQuantity.toString()),
+                            onChanged: (v) {
+                              final qty = int.tryParse(v) ?? 1;
+                              setState(() => _labelQuantity = qty.clamp(1, 100));
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Slider(
+                            value: _labelQuantity.toDouble(),
+                            min: 1,
+                            max: 20,
+                            divisions: 19,
+                            label: _labelQuantity.toString(),
+                            onChanged: (v) => setState(() => _labelQuantity = v.round()),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     Text('Connection Status: ${_isConnected ? "Connected" : "Disconnected"}'),

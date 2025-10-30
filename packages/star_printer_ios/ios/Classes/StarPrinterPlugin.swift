@@ -865,8 +865,54 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                                 .actionPrintText("$\(labelPrice)\n")
                                 .styleBold(false)
                         }
+                    } else if layoutType == "mixed" {
+                        // 58mm paper (51mm printable) - optimized horizontal layout
+                        // Category centered below header
+                        if !category.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(category)\n")
+                                .styleAlignment(.left)
+                        }
+                        
+                        // Size, Color, and Price all on one line, centered
+                        // Format: Small | Blush Floral | $5.00 (price is bold)
+                        var combinedLine = ""
+                        if !size.isEmpty {
+                            combinedLine += size
+                        }
+                        if !color.isEmpty {
+                            if !combinedLine.isEmpty {
+                                combinedLine += " | "
+                            }
+                            combinedLine += color
+                        }
+                        
+                        if !combinedLine.isEmpty || !labelPrice.isEmpty {
+                            _ = printerBuilder.styleAlignment(.center)
+                            
+                            // Print size and color first (if any)
+                            if !combinedLine.isEmpty {
+                                _ = printerBuilder.actionPrintText(combinedLine)
+                            }
+                            
+                            // Add separator and price (bold)
+                            if !labelPrice.isEmpty {
+                                if !combinedLine.isEmpty {
+                                    _ = printerBuilder.actionPrintText(" | ")
+                                }
+                                _ = printerBuilder
+                                    .styleBold(true)
+                                    .actionPrintText("$\(labelPrice)")
+                                    .styleBold(false)
+                            }
+                            
+                            _ = printerBuilder
+                                .actionPrintText("\n")
+                                .styleAlignment(.left)
+                        }
                     } else {
-                        // Mixed or horizontal layouts (58mm/80mm paper)
+                        // 80mm paper (72mm printable) - full horizontal layout
                         // Category (centered, below header)
                         if !category.isEmpty {
                             _ = printerBuilder
@@ -880,7 +926,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                             _ = printerBuilder.actionPrintText("\(size)\n")
                         }
                         
-                        // Color (left) and Price (right) on SAME line
+                        // Color (left) and Price (right, bold) on SAME line
                         if !color.isEmpty && !labelPrice.isEmpty {
                             let colorText = color
                             let priceText = "$\(labelPrice)"
@@ -888,7 +934,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                             // Calculate padding to align price to the right
                             let colorChars = colorText.count
                             let priceChars = priceText.count
-                            let totalWidth = 32
+                            let totalWidth = 48  // More width for 80mm paper
                             let paddingNeeded = max(0, totalWidth - colorChars - priceChars)
                             let padding = String(repeating: " ", count: paddingNeeded)
                             

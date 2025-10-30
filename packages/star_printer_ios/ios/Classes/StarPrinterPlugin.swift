@@ -904,46 +904,41 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                                 .styleAlignment(.left)
                         }
                     } else {
-                        // 80mm paper (72mm printable) - full horizontal layout
-                        // Category (centered, below header)
-                        if !category.isEmpty {
+                        // 80mm paper (72mm printable) - same layout as 58mm
+                        // Category centered below header (skip if already in header)
+                        if !category.isEmpty && category != headerTitle {
                             _ = printerBuilder
                                 .styleAlignment(.center)
                                 .actionPrintText("\(category)\n")
                                 .styleAlignment(.left)
                         }
                         
-                        // Size (left, normal size)
-                        if !size.isEmpty {
-                            _ = printerBuilder.actionPrintText("\(size)\n")
-                        }
-                        
-                        // Color (left) and Price (right, bold) on SAME line
-                        if !color.isEmpty && !labelPrice.isEmpty {
-                            let colorText = color
-                            let priceText = "$\(labelPrice)"
-                            
-                            // Calculate padding to align price to the right
-                            let colorChars = colorText.count
-                            let priceChars = priceText.count
-                            let totalWidth = 48  // More width for 80mm paper
-                            let paddingNeeded = max(0, totalWidth - colorChars - priceChars)
-                            let padding = String(repeating: " ", count: paddingNeeded)
-                            
-                            // Print color normally, then price bold on same line
+                        // Price centered on its own line (bold)
+                        if !labelPrice.isEmpty {
                             _ = printerBuilder
-                                .actionPrintText(colorText + padding)
-                                .styleBold(true)
-                                .actionPrintText("\(priceText)\n")
-                                .styleBold(false)
-                        } else if !color.isEmpty {
-                            _ = printerBuilder.actionPrintText("\(color)\n")
-                        } else if !labelPrice.isEmpty {
-                            _ = printerBuilder
-                                .styleAlignment(.right)
+                                .styleAlignment(.center)
                                 .styleBold(true)
                                 .actionPrintText("$\(labelPrice)\n")
                                 .styleBold(false)
+                                .styleAlignment(.left)
+                        }
+                        
+                        // Size and Color on one line, centered (no pipes)
+                        var combinedLine = ""
+                        if !size.isEmpty {
+                            combinedLine += size
+                        }
+                        if !color.isEmpty {
+                            if !combinedLine.isEmpty {
+                                combinedLine += "  "
+                            }
+                            combinedLine += color
+                        }
+                        
+                        if !combinedLine.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .actionPrintText("\(combinedLine)\n")
                                 .styleAlignment(.left)
                         }
                     }

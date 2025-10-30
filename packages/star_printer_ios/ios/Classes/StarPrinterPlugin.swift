@@ -680,14 +680,25 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 // 1) Header: print as bold text instead of image for labels
                 if !headerTitle.isEmpty {
                     if labelPrinter {
-                        // For labels, use bold text instead of image
-                        _ = printerBuilder
-                            .styleAlignment(.center)
-                            .styleBold(true)
-                            .actionPrintText("\(headerTitle)\n")
-                            .styleBold(false)
-                            .styleAlignment(.left)
-                        if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
+                        // For mixed layout, combine header with price on same line
+                        if layoutType == "mixed" && !labelPrice.isEmpty {
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .styleBold(true)
+                                .actionPrintText("\(headerTitle)     $\(labelPrice)\n")
+                                .styleBold(false)
+                                .styleAlignment(.left)
+                            if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
+                        } else {
+                            // For other layouts, use bold text for header only
+                            _ = printerBuilder
+                                .styleAlignment(.center)
+                                .styleBold(true)
+                                .actionPrintText("\(headerTitle)\n")
+                                .styleBold(false)
+                                .styleAlignment(.left)
+                            if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
+                        }
                     } else {
                         // For receipts, keep using image
                         if let headerImageRaw = createTextImage(text: headerTitle, fontSize: headerFontSize, imageWidth: CGFloat(targetDots)),
@@ -867,48 +878,24 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         }
                     } else if layoutType == "mixed" {
                         // 58mm paper (51mm printable) - optimized horizontal layout
-                        // Category centered below header
-                        if !category.isEmpty {
-                            _ = printerBuilder
-                                .styleAlignment(.center)
-                                .actionPrintText("\(category)\n")
-                                .styleAlignment(.left)
-                        }
+                        // Category and Price already printed in header section, skip here
                         
-                        // Size, Color, and Price all on one line, centered
-                        // Format: Small | Blush Floral | $5.00 (price is bold)
+                        // Size and Color on one line, centered (no pipes)
                         var combinedLine = ""
                         if !size.isEmpty {
                             combinedLine += size
                         }
                         if !color.isEmpty {
                             if !combinedLine.isEmpty {
-                                combinedLine += " | "
+                                combinedLine += "  "
                             }
                             combinedLine += color
                         }
                         
-                        if !combinedLine.isEmpty || !labelPrice.isEmpty {
-                            _ = printerBuilder.styleAlignment(.center)
-                            
-                            // Print size and color first (if any)
-                            if !combinedLine.isEmpty {
-                                _ = printerBuilder.actionPrintText(combinedLine)
-                            }
-                            
-                            // Add separator and price (bold)
-                            if !labelPrice.isEmpty {
-                                if !combinedLine.isEmpty {
-                                    _ = printerBuilder.actionPrintText(" | ")
-                                }
-                                _ = printerBuilder
-                                    .styleBold(true)
-                                    .actionPrintText("$\(labelPrice)")
-                                    .styleBold(false)
-                            }
-                            
+                        if !combinedLine.isEmpty {
                             _ = printerBuilder
-                                .actionPrintText("\n")
+                                .styleAlignment(.center)
+                                .actionPrintText("\(combinedLine)\n")
                                 .styleAlignment(.left)
                         }
                     } else {

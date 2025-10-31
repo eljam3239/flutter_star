@@ -665,6 +665,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 let targetDots: Int
                 let fullWidthMm: Double
                 
+                // Detect printer DPI and magnification needs
+                var textMagnification: (width: Int, height: Int) = (1, 1)
+                
                 if labelPrinter && printableAreaMm > 0 {
                     // Detect printer DPI based on model
                     let dotsPerMm: Double
@@ -672,7 +675,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         let modelName = String(describing: model).lowercased()
                         if modelName.contains("mc_label2") || modelName.contains("mc-label2") {
                             dotsPerMm = 11.8  // mcLabel2 is 300 DPI (300/25.4 = 11.8 dots/mm)
-                            print("DEBUG: Detected mcLabel2 - using 300 DPI (11.8 dots/mm)")
+                            textMagnification = (2, 2)  // Scale text 2x to match TSP100IVSK visual size
+                            print("DEBUG: Detected mcLabel2 - using 300 DPI (11.8 dots/mm) with 2x text magnification")
                         } else {
                             dotsPerMm = 8.0   // TSP100IVSK is 203 DPI (203/25.4 = 8.0 dots/mm)
                             print("DEBUG: Detected TSP100IVSK or similar - using 203 DPI (8 dots/mm)")
@@ -699,7 +703,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         _ = printerBuilder
                             .styleAlignment(.center)
                             .styleBold(true)
+                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                             .actionPrintText("\(headerTitle)\n")
+                            .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                             .styleBold(false)
                             .styleAlignment(.left)
                         if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
@@ -854,14 +860,18 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if !category.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("\(category)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                         }
                         
                         if !labelPrice.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
                                 .styleBold(true)
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("$\(labelPrice)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleBold(false)
                         }
                         // Size and Color on same line, centered
@@ -879,7 +889,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if !combinedLine.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("\(combinedLine)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleAlignment(.left)
                         }
                     } else if layoutType == "mixed" {
@@ -888,7 +900,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if !category.isEmpty && category != headerTitle {
                             _ = printerBuilder
                                 .styleAlignment(.center)
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("\(category)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleAlignment(.left)
                         }
                         
@@ -897,7 +911,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                             _ = printerBuilder
                                 .styleAlignment(.center)
                                 .styleBold(true)
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("$\(labelPrice)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleBold(false)
                                 .styleAlignment(.left)
                         }
@@ -917,7 +933,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if !combinedLine.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("\(combinedLine)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleAlignment(.left)
                         }
                     } else {
@@ -926,7 +944,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if !category.isEmpty && category != headerTitle {
                             _ = printerBuilder
                                 .styleAlignment(.center)
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("\(category)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleAlignment(.left)
                         }
                         
@@ -935,7 +955,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                             _ = printerBuilder
                                 .styleAlignment(.center)
                                 .styleBold(true)
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("$\(labelPrice)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleBold(false)
                                 .styleAlignment(.left)
                         }
@@ -955,7 +977,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if !combinedLine.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("\(combinedLine)\n")
+                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleAlignment(.left)
                         }
                     }
@@ -988,8 +1012,13 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                             symbology = .code128
                         }
                         
+                        // Scale barcode for mcLabel2 to match text magnification
+                        let scaledBarcodeHeight = Double(barcodeHeight_stored) * Double(textMagnification.height)
+                        let barcodeBarDots = textMagnification.width  // Scale bar width to match text width
+                        
                         let barcodeParam = StarXpandCommand.Printer.BarcodeParameter(content: barcodeContent, symbology: symbology)
-                            .setHeight(Double(barcodeHeight_stored))
+                            .setHeight(scaledBarcodeHeight)
+                            .setBarDots(barcodeBarDots)
                             .setPrintHRI(barcodePrintHRI_stored)
                         
                         _ = printerBuilder
@@ -997,7 +1026,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                             .actionPrintBarcode(barcodeParam)
                             .styleAlignment(.left)
                         
-                        print("DEBUG: Barcode command added at bottom")
+                        print("DEBUG: Barcode command added at bottom (height=\(scaledBarcodeHeight)mm, barDots=\(barcodeBarDots))")
                     }
                     
                 } else if graphicsOnly {

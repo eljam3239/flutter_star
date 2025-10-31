@@ -666,8 +666,23 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 let fullWidthMm: Double
                 
                 if labelPrinter && printableAreaMm > 0 {
-                    // Calculate dots from mm: 203 DPI = 8 dots per mm
-                    targetDots = Int(printableAreaMm * 8.0)
+                    // Detect printer DPI based on model
+                    let dotsPerMm: Double
+                    if let model = self.printer?.information?.model {
+                        let modelName = String(describing: model).lowercased()
+                        if modelName.contains("mc_label2") || modelName.contains("mc-label2") {
+                            dotsPerMm = 11.8  // mcLabel2 is 300 DPI (300/25.4 = 11.8 dots/mm)
+                            print("DEBUG: Detected mcLabel2 - using 300 DPI (11.8 dots/mm)")
+                        } else {
+                            dotsPerMm = 8.0   // TSP100IVSK is 203 DPI (203/25.4 = 8.0 dots/mm)
+                            print("DEBUG: Detected TSP100IVSK or similar - using 203 DPI (8 dots/mm)")
+                        }
+                    } else {
+                        dotsPerMm = 8.0  // Default to 203 DPI if model unknown
+                        print("DEBUG: Unknown model - defaulting to 203 DPI (8 dots/mm)")
+                    }
+                    
+                    targetDots = Int(printableAreaMm * dotsPerMm)
                     fullWidthMm = printableAreaMm
                     print("DEBUG: Using label printable area: \(printableAreaMm)mm = \(targetDots) dots")
                 } else {

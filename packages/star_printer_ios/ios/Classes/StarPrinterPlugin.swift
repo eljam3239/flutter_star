@@ -1101,10 +1101,15 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
             do {
                 let status = try await printer?.getStatus()
                 
-                let statusMap: [String: Any] = [
+                var statusMap: [String: Any] = [
                     "isOnline": !(status?.hasError ?? true),
                     "status": (status?.hasError ?? true) ? "error" : "ready"
                 ]
+                
+                // Add paperPresent if available (for label printers with paper hold)
+                if let paperPresent = status?.detail.paperPresent {
+                    statusMap["paperPresent"] = paperPresent
+                }
                 
                 DispatchQueue.main.async {
                     result(statusMap)

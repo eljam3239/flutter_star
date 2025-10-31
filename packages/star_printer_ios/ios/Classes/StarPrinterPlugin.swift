@@ -889,9 +889,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if !combinedLine.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("\(combinedLine)\n")
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleAlignment(.left)
                         }
                     } else if layoutType == "mixed" {
@@ -933,9 +931,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if !combinedLine.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("\(combinedLine)\n")
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleAlignment(.left)
                         }
                     } else {
@@ -977,9 +973,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         if !combinedLine.isEmpty {
                             _ = printerBuilder
                                 .styleAlignment(.center)
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: textMagnification.width, height: textMagnification.height))
                                 .actionPrintText("\(combinedLine)\n")
-                                .styleMagnification(StarXpandCommand.MagnificationParameter(width: 1, height: 1))
                                 .styleAlignment(.left)
                         }
                     }

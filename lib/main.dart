@@ -475,26 +475,84 @@ class _MyHomePageState extends State<MyHomePage> {
         settings: labelSettings,
       );
       
+      bool shownPaperHoldWarning = false;
+      
       // Print multiple labels
       for (int i = 0; i < _labelQuantity; i++) {
         print('DEBUG: Sending label ${i + 1} of $_labelQuantity to printer...');
-        await StarPrinter.printReceipt(printJob);
         
-        // Small delay between prints to prevent buffer overflow
-        if (i < _labelQuantity - 1) {
-          await Future.delayed(const Duration(milliseconds: 100));
+        final printStartTime = DateTime.now();
+        
+        try {
+          // Try to print the label
+          await StarPrinter.printReceipt(printJob);
+          
+          final printDuration = DateTime.now().difference(printStartTime);
+          print('DEBUG: Label ${i + 1} completed in ${printDuration.inMilliseconds}ms');
+          
+          // Small delay between prints to prevent buffer overflow
+          if (i < _labelQuantity - 1) {
+            await Future.delayed(const Duration(milliseconds: 100));
+          }
+        } catch (e) {
+          // Check if this is a paper hold error
+          final errorMessage = e.toString().toLowerCase();
+          if (errorMessage.contains('holding paper') || errorMessage.contains('paper hold')) {
+            if (!shownPaperHoldWarning && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please remove each label after it prints, or disable "Paper Hold" in your Star App settings'),
+                  duration: Duration(seconds: 8),
+                ),
+              );
+              shownPaperHoldWarning = true;
+            }
+            print('DEBUG: Paper hold detected - waiting for user to remove label ${i + 1}');
+            
+            // Keep trying to print this label until it succeeds
+            bool labelPrinted = false;
+            while (!labelPrinted) {
+              await Future.delayed(const Duration(milliseconds: 500));
+              try {
+                await StarPrinter.printReceipt(printJob);
+                labelPrinted = true;
+                print('DEBUG: Label ${i + 1} printed after paper removal');
+              } catch (retryError) {
+                // Still holding, keep waiting
+                if (!retryError.toString().toLowerCase().contains('holding paper')) {
+                  // Different error, rethrow
+                  rethrow;
+                }
+              }
+            }
+            
+            final printDuration = DateTime.now().difference(printStartTime);
+            print('DEBUG: Label ${i + 1} completed in ${printDuration.inMilliseconds}ms (including wait time)');
+            
+            // Small delay between prints
+            if (i < _labelQuantity - 1) {
+              await Future.delayed(const Duration(milliseconds: 100));
+            }
+          } else {
+            // Different error, rethrow
+            rethrow;
+          }
         }
       }
       
       print('DEBUG: All $_labelQuantity label(s) printed successfully');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$_labelQuantity label(s) printed successfully')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$_labelQuantity label(s) printed successfully')),
+        );
+      }
     } catch (e) {
       print('DEBUG: Label print failed with error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to print label: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to print label: $e')),
+        );
+      }
     }
   }
 

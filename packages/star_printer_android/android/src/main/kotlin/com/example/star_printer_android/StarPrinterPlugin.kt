@@ -437,9 +437,25 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   val targetDots: Int
   val fullWidthMm: Double
   
+  // Detect printer DPI and magnification needs
+  var textMagnificationWidth = 1
+  var textMagnificationHeight = 1
+  
   if (labelPrinter && printableAreaMm > 0) {
-    // Calculate dots from mm: 203 DPI = 8 dots per mm
-    targetDots = (printableAreaMm * 8.0).toInt()
+    // Detect printer DPI based on model
+    val dotsPerMm: Double
+    val modelName = printer?.information?.model?.name?.lowercase() ?: ""
+    if (modelName.contains("mc_label2") || modelName.contains("mc-label2")) {
+      dotsPerMm = 11.8  // mcLabel2 is 300 DPI (300/25.4 = 11.8 dots/mm)
+      textMagnificationWidth = 2
+      textMagnificationHeight = 2  // Scale text 2x to match TSP100IVSK visual size
+      println("DEBUG: Detected mcLabel2 - using 300 DPI (11.8 dots/mm) with 2x text magnification")
+    } else {
+      dotsPerMm = 8.0   // TSP100IVSK is 203 DPI (203/25.4 = 8.0 dots/mm)
+      println("DEBUG: Detected TSP100IVSK or similar - using 203 DPI (8 dots/mm)")
+    }
+    
+    targetDots = (printableAreaMm * dotsPerMm).toInt()
     fullWidthMm = printableAreaMm
     println("DEBUG: Using label printable area: ${printableAreaMm}mm = $targetDots dots")
   } else {
@@ -457,7 +473,9 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
             printerBuilder
               .styleAlignment(Alignment.Center)
               .styleBold(true)
+              .styleMagnification(MagnificationParameter(textMagnificationWidth, textMagnificationHeight))
               .actionPrintText("$headerTitle\n")
+              .styleMagnification(MagnificationParameter(1, 1))
               .styleBold(false)
               .styleAlignment(Alignment.Left)
             if (headerSpacing > 0) printerBuilder.actionFeedLine(headerSpacing)
@@ -611,7 +629,9 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
               if (category.isNotEmpty()) {
                 printerBuilder
                   .styleAlignment(Alignment.Center)
+                  .styleMagnification(MagnificationParameter(textMagnificationWidth, textMagnificationHeight))
                   .actionPrintText("$category\n")
+                  .styleMagnification(MagnificationParameter(1, 1))
                   .styleAlignment(Alignment.Left)
               }
               
@@ -619,11 +639,13 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                 printerBuilder
                   .styleAlignment(Alignment.Center)
                   .styleBold(true)
+                  .styleMagnification(MagnificationParameter(textMagnificationWidth, textMagnificationHeight))
                   .actionPrintText("$$labelPrice\n")
+                  .styleMagnification(MagnificationParameter(1, 1))
                   .styleBold(false)
                   .styleAlignment(Alignment.Left)
               }
-              // Size and Color on one line, centered (no pipes)
+              // Size and Color on one line, centered (no pipes, no magnification)
               val combinedLine = buildString {
                 if (size.isNotEmpty()) append(size)
                 if (color.isNotEmpty()) {
@@ -645,7 +667,9 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
               if (category.isNotEmpty() && category != headerTitle) {
                 printerBuilder
                   .styleAlignment(Alignment.Center)
+                  .styleMagnification(MagnificationParameter(textMagnificationWidth, textMagnificationHeight))
                   .actionPrintText("$category\n")
+                  .styleMagnification(MagnificationParameter(1, 1))
                   .styleAlignment(Alignment.Left)
               }
               
@@ -654,12 +678,14 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                 printerBuilder
                   .styleAlignment(Alignment.Center)
                   .styleBold(true)
+                  .styleMagnification(MagnificationParameter(textMagnificationWidth, textMagnificationHeight))
                   .actionPrintText("$$labelPrice\n")
+                  .styleMagnification(MagnificationParameter(1, 1))
                   .styleBold(false)
                   .styleAlignment(Alignment.Left)
               }
               
-              // Size and Color on one line, centered (no pipes)
+              // Size and Color on one line, centered (no pipes, no magnification)
               val combinedLine = buildString {
                 if (size.isNotEmpty()) append(size)
                 if (color.isNotEmpty()) {
@@ -681,7 +707,9 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
               if (category.isNotEmpty() && category != headerTitle) {
                 printerBuilder
                   .styleAlignment(Alignment.Center)
+                  .styleMagnification(MagnificationParameter(textMagnificationWidth, textMagnificationHeight))
                   .actionPrintText("$category\n")
+                  .styleMagnification(MagnificationParameter(1, 1))
                   .styleAlignment(Alignment.Left)
               }
               
@@ -690,12 +718,14 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
                 printerBuilder
                   .styleAlignment(Alignment.Center)
                   .styleBold(true)
+                  .styleMagnification(MagnificationParameter(textMagnificationWidth, textMagnificationHeight))
                   .actionPrintText("$$labelPrice\n")
+                  .styleMagnification(MagnificationParameter(1, 1))
                   .styleBold(false)
                   .styleAlignment(Alignment.Left)
               }
               
-              // Size and Color on one line, centered (no pipes)
+              // Size and Color on one line, centered (no pipes, no magnification)
               val combinedLine = buildString {
                 if (size.isNotEmpty()) append(size)
                 if (color.isNotEmpty()) {
@@ -727,18 +757,21 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
               else -> BarcodeSymbology.Code128
             }
             
-            val barDots = if (labelPrinter) 2 else 3
+            // Scale barcode for mcLabel2 to match text magnification
+            val scaledBarcodeHeight = barcodeHeight.toDouble() * textMagnificationHeight
+            val barcodeBarDots = textMagnificationWidth  // Scale bar width to match text width
+            
             val barcodeParam = BarcodeParameter(barcodeContent, symbology)
-              .setBarDots(barDots)
+              .setBarDots(barcodeBarDots)
               .setPrintHri(barcodePrintHRI)
-              .setHeight(barcodeHeight.toDouble())
+              .setHeight(scaledBarcodeHeight)
             
             printerBuilder
               .styleAlignment(Alignment.Center)
               .actionPrintBarcode(barcodeParam)
               .styleAlignment(Alignment.Left)
             
-            println("DEBUG: Barcode command added at bottom")
+            println("DEBUG: Barcode command added at bottom (height=${scaledBarcodeHeight}mm, barDots=$barcodeBarDots)")
           }
           
           // Set printable area for label
@@ -797,10 +830,13 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
       try {
         val status = printer?.getStatusAsync()?.await()
         
-        val statusMap = mapOf(
+        val statusMap = mutableMapOf<String, Any?>(
           "isOnline" to (status != null),
           "status" to "OK"
         )
+        
+        // Note: paperPresent is available on iOS but not consistently exposed in Android StarIO10 SDK
+        // Leaving this out for now on Android
         
         withContext(Dispatchers.Main) {
           result.success(statusMap)

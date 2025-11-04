@@ -56,7 +56,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         let name = String(describing: model).lowercased()
         let isLabel = name.contains("mc_label2") || name.contains("mc-label2") || 
                name.contains("tsp100iv_sk") || name.contains("tsp100iv-sk") || name.contains("sk") ||
-               name.contains("mpop")  // mPOP can also print labels
+               name.contains("mpop") ||  // mPOP can also print labels
+               name.contains("tsp100iv")  // TSP100IV can print labels too
         print("DEBUG: isLabelPrinter check for '\(name)': \(isLabel)")
         return isLabel
     }
@@ -397,141 +398,60 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
             
             // Continue with connection logic...
             
-            // Try to find the discovered printer object first to get IP address info
-            let foundPrinter = self.discoveredPrinters.first { printer in
-                // Match by identifier (IP address) or MAC address
-                return printer.connectionSettings.identifier == identifier
-            }
+            // Use MAC address directly for all printers - let StarIO SDK resolve
+            print("Printer not found in discovered list, creating new connection...")
             
-            // For now, let's just extract IP from the debug output we've seen
-            // We know the IP addresses are 10.20.30.70 and 10.20.30.155
-            var ipAddress: String? = nil
-            if identifier == "0011625AA26C" {
-                ipAddress = "10.20.30.70"  // Just use the IP address
-            } else if identifier == "00116242A952" {
-                ipAddress = "10.20.30.155"  // Just use the IP address
-            }
-            
-            if let ipAddr = ipAddress {
-                print("Using IP address for connection: \(ipAddr)")
-                
-                do {
-                    // Create new connection settings with IP address and explicit settings
-                    self.connectionSettings = StarConnectionSettings(
-                        interfaceType: .lan,
-                        identifier: ipAddr,
-                        autoSwitchInterface: false  // Try without auto-switch first
-                    )
-                    
-                    print("Creating StarPrinter with IP: \(ipAddr)")
-                    self.printer = StarPrinter(self.connectionSettings!)
-                    
-                    print("Attempting to open connection (30 second timeout)...")
-                    print("Connection settings: \(self.connectionSettings!)")
-                    
-                    // Try with a longer timeout and better error handling
-                    do {
-                        let _ = try await withTimeout(30.0) {
-                            try await self.printer?.open()
-                        }
-                        
-                        print("Connection successful!")
-                        
-                        DispatchQueue.main.async {
-                            result(nil)
-                        }
-                    } catch {
-                        print("Connection timeout or error: \(error)")
-                        throw error
-                    }
-                    
-                } catch {
-                    print("Connection failed with error: \(error)")
-                    print("Error type: \(type(of: error))")
-                    
-                    // Let's also try the alternative approach with auto-switch
-                    print("Trying alternative connection with auto-switch enabled...")
-                    
-                    do {
-                        self.connectionSettings = StarConnectionSettings(
-                            interfaceType: .lan,
-                            identifier: ipAddr,
-                            autoSwitchInterface: true
-                        )
-                        
-                        self.printer = StarPrinter(self.connectionSettings!)
-                        
-                        let _ = try await withTimeout(15.0) {
-                            try await self.printer?.open()
-                        }
-                        
-                        print("Alternative connection successful!")
-                        
-                        DispatchQueue.main.async {
-                            result(nil)
-                        }
-                    } catch {
-                        print("Alternative connection also failed: \(error)")
-                        DispatchQueue.main.async {
-                            result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect: \(error)", details: nil))
-                        }
-                    }
+            do {
+                let starInterfaceType: InterfaceType
+                switch interfaceType {
+                case "bluetooth":
+                    starInterfaceType = .bluetooth
+                case "bluetoothLE":
+                    starInterfaceType = .bluetoothLE
+                case "lan":
+                    starInterfaceType = .lan
+                case "usb":
+                    starInterfaceType = .usb
+                default:
+                    starInterfaceType = .lan
                 }
-            } else {
-                print("Printer not found in discovered list, creating new connection...")
                 
-                do {
-                    let starInterfaceType: InterfaceType
-                    switch interfaceType {
-                    case "bluetooth":
-                        starInterfaceType = .bluetooth
-                    case "bluetoothLE":
-                        starInterfaceType = .bluetoothLE
-                    case "lan":
-                        starInterfaceType = .lan
-                    case "usb":
-                        starInterfaceType = .usb
-                    default:
-                        starInterfaceType = .lan
-                    }
-                    
-                    // Parse identifier to remove model info if present
-                    let cleanIdentifier = identifier.components(separatedBy: ":").first ?? identifier
-                    print("Using clean identifier: \(cleanIdentifier)")
-                    
-                    self.connectionSettings = StarConnectionSettings(
-                        interfaceType: starInterfaceType,
-                        identifier: cleanIdentifier
-                    )
-                    
-                    self.printer = StarPrinter(self.connectionSettings!)
-                    
-                    print("Attempting to open connection...")
-                    
-                    // Set a shorter timeout and better error handling
-                    let timeoutTask = Task {
-                        try await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
-                        throw NSError(domain: "com.starprinter", code: -1, userInfo: [NSLocalizedDescriptionKey: "Connection timeout after 10 seconds"])
-                    }
-                    
-                    let connectionTask = Task {
-                        try await self.printer?.open()
-                    }
-                    
-                    // Race between connection and timeout
-                    _ = try await connectionTask.value
-                    timeoutTask.cancel()
-                    
-                    print("Connection successful!")
-                    
-                    DispatchQueue.main.async {
-                        result(nil)
-                    }
-                } catch {
-                    print("Connection failed with error: \(error)")
-                    DispatchQueue.main.async {
-                        result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect: \(error)", details: nil))
-                    }
+                // Parse identifier to remove model info if present
+                let cleanIdentifier = identifier.components(separatedBy: ":").first ?? identifier
+                print("Using clean identifier: \(cleanIdentifier)")
+                
+                self.connectionSettings = StarConnectionSettings(
+                    interfaceType: starInterfaceType,
+                    identifier: cleanIdentifier
+                )
+                
+                self.printer = StarPrinter(self.connectionSettings!)
+                
+                print("Attempting to open connection...")
+                
+                // Set a shorter timeout and better error handling
+                let timeoutTask = Task {
+                    try await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+                    throw NSError(domain: "com.starprinter", code: -1, userInfo: [NSLocalizedDescriptionKey: "Connection timeout after 10 seconds"])
+                }
+                
+                let connectionTask = Task {
+                    try await self.printer?.open()
+                }
+                
+                // Race between connection and timeout
+                _ = try await connectionTask.value
+                timeoutTask.cancel()
+                
+                print("Connection successful!")
+                
+                DispatchQueue.main.async {
+                    result(nil)
+                }
+            } catch {
+                print("Connection failed with error: \(error)")
+                DispatchQueue.main.async {
+                    result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect: \(error)", details: nil))
                 }
             }
         }
@@ -660,16 +580,20 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 // Build printer actions according to layout (follow Star sample structure)
                 let printerBuilder = StarXpandCommand.PrinterBuilder()
                 
-                // For label printers, use the printable area from settings
-                // For receipt printers, use auto-detected width
+                // Check if this is a label print job (has label-specific fields)
+                let hasLabelFields = !category.isEmpty || !size.isEmpty || !color.isEmpty || !labelPrice.isEmpty
+                
+                // For label printers OR when printing labels, use the printable area from settings
+                // For receipt printers doing receipt jobs, use auto-detected width
                 let labelPrinter = isLabelPrinter()
+                let useLabelMode = (labelPrinter || hasLabelFields) && printableAreaMm > 0
                 let targetDots: Int
                 let fullWidthMm: Double
                 
                 // Detect printer DPI and magnification needs
                 var textMagnification: (width: Int, height: Int) = (1, 1)
                 
-                if labelPrinter && printableAreaMm > 0 {
+                if useLabelMode {
                     // Detect printer DPI based on model
                     let dotsPerMm: Double
                     if let model = self.printer?.information?.model {
@@ -699,7 +623,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
 
                 // 1) Header: print as bold text instead of image for labels
                 if !headerTitle.isEmpty {
-                    if labelPrinter {
+                    if useLabelMode {
                         // For labels, use bold text instead of image
                         _ = printerBuilder
                             .styleAlignment(.center)
@@ -847,12 +771,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 // 3) Body content or Label template
                 let trimmedBody = content.trimmingCharacters(in: .whitespacesAndNewlines)
                 
-                // Check if this is a label template (has label-specific fields)
-                let hasLabelFields = !category.isEmpty || !size.isEmpty || !color.isEmpty || !labelPrice.isEmpty
+                print("DEBUG: Rendering body content - graphicsOnly=\(graphicsOnly), useLabelMode=\(useLabelMode), hasLabelFields=\(hasLabelFields), contentLength=\(trimmedBody.count)")
                 
-                print("DEBUG: Rendering body content - graphicsOnly=\(graphicsOnly), labelPrinter=\(labelPrinter), hasLabelFields=\(hasLabelFields), contentLength=\(trimmedBody.count)")
-                
-                if labelPrinter && hasLabelFields {
+                if useLabelMode && hasLabelFields {
                     // Label template rendering
                     print("DEBUG: Rendering label template with layout: \(layoutType)")
                     
@@ -1091,16 +1012,10 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                     }
                 }
 
-                // Build document - set printable area based on paper width
+                // Build document - DO NOT use settingPrintableArea() as it permanently changes printer memory!
+                // We already calculated targetDots based on printableAreaMm for our rendering
                 let docBuilder = StarXpandCommand.DocumentBuilder()
-                if labelPrinter {
-                    // For label printers, use the printable area specified by the user
-                    _ = docBuilder.settingPrintableArea(printableAreaMm)
-                    print("DEBUG: Set label printable area to \(printableAreaMm)mm")
-                } else {
-                    // For receipt printers, use full width
-                    _ = docBuilder.settingPrintableArea(fullWidthMm)
-                }
+                // Let the printer use its own configured printable area
                 _ = builder.addDocument(docBuilder.addPrinter(printerBuilder.actionCut(.partial)))
                 
                 let commands = builder.getCommands()

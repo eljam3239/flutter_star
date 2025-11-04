@@ -1016,7 +1016,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     return try {
       val modelStr = printer?.information?.model?.toString() ?: return false
       val ms = modelStr.lowercase()
-      val isLabel = ms.contains("label") || ms.contains("tsp100iv_sk") || ms.contains("tsp100sk") || ms.contains("_sk")
+      val isLabel = ms.contains("label") || ms.contains("tsp100iv_sk") || ms.contains("tsp100sk") || ms.contains("_sk") || ms.contains("mpop")
       println("DEBUG: isLabelPrinter check for '$ms': $isLabel")
       isLabel
     } catch (_: Exception) { false }

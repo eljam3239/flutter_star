@@ -432,8 +432,13 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   val graphicsOnly = isGraphicsOnlyPrinter()
 
   val printerBuilder = PrinterBuilder()
+  
+  // Check if this is a label print job (has label-specific fields)
+  val hasLabelFields = category.isNotEmpty() || size.isNotEmpty() || color.isNotEmpty() || labelPrice.isNotEmpty()
+  
   // Compute dynamic printable characteristics to match iOS parity
   val labelPrinter = isLabelPrinter()
+  val useLabelMode = (labelPrinter || hasLabelFields) && printableAreaMm > 0
   val targetDots: Int
   val fullWidthMm: Double
   
@@ -441,7 +446,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   var textMagnificationWidth = 1
   var textMagnificationHeight = 1
   
-  if (labelPrinter && printableAreaMm > 0) {
+  if (useLabelMode) {
     // Detect printer DPI based on model
     val dotsPerMm: Double
     val modelName = printer?.information?.model?.name?.lowercase() ?: ""
@@ -468,7 +473,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
         // 1) Header: print as bold text instead of image for labels
         if (headerTitle.isNotEmpty()) {
-          if (labelPrinter) {
+          if (useLabelMode) {
             // For labels, use bold text instead of image
             printerBuilder
               .styleAlignment(Alignment.Center)
@@ -511,9 +516,8 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         }
 
   // 2.5) Barcode printing for receipts (labels print barcode at bottom in template)
-        val hasLabelFields = category.isNotEmpty() || size.isNotEmpty() || color.isNotEmpty() || labelPrice.isNotEmpty()
-        if (barcodeContent.isNotEmpty() && !(labelPrinter && hasLabelFields)) {
-          println("DEBUG: Printing barcode (receipt mode): content=$barcodeContent, symbology=$barcodeSymbology, isLabelPrinter=$labelPrinter")
+        if (barcodeContent.isNotEmpty() && !(useLabelMode && hasLabelFields)) {
+          println("DEBUG: Printing barcode (receipt mode): content=$barcodeContent, symbology=$barcodeSymbology, useLabelMode=$useLabelMode")
           
           // Map symbology string to StarXpand BarcodeSymbology enum
           val symbology = when (barcodeSymbology) {
@@ -532,6 +536,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           val barcodeParam = BarcodeParameter(barcodeContent, symbology)
             .setBarDots(barDots)
             .setHeight(barcodeHeight.toDouble())
+            .setPrintHri(barcodePrintHRI)  // Always print HRI in receipt mode too
           
           println("DEBUG: Barcode parameters - barDots=$barDots, height=$barcodeHeight, printableWidth=$targetDots")
           
@@ -548,9 +553,9 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   // 2.6) Details block (we will later inject items between ruled lines)
         val hasAnyDetails = listOf(locationText, dateText, timeText, cashier, receiptNum, lane, footer).any { it.isNotEmpty() }
         if (hasAnyDetails) {
-          if (graphicsOnly || isLabelPrinter()) {
+          if (graphicsOnly || useLabelMode) {
             // Force label printers to a 576px canvas to ensure full-width usage like iOS
-            val detailsCanvas = if (isLabelPrinter()) 576 else targetDots
+            val detailsCanvas = if (useLabelMode) 576 else targetDots
             val detailsBmp = createDetailsBitmap(locationText, dateText, timeText, cashier, receiptNum, lane, footer, items, detailsCanvas)
             if (detailsBmp != null) {
               printerBuilder.actionPrintImage(ImageParameter(detailsBmp, detailsCanvas)).actionFeedLine(1)
@@ -617,9 +622,9 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         // 3) Body content or Label template
         val trimmedBody = content.trim()
         
-        println("DEBUG: Rendering body content - isLabelPrinter=$labelPrinter, graphicsOnly=$graphicsOnly, hasLabelFields=$hasLabelFields, contentLength=${trimmedBody.length}")
+        println("DEBUG: Rendering body content - useLabelMode=$useLabelMode, graphicsOnly=$graphicsOnly, hasLabelFields=$hasLabelFields, contentLength=${trimmedBody.length}")
         
-        if (labelPrinter && hasLabelFields) {
+        if (useLabelMode && hasLabelFields) {
           // Label template rendering
           println("DEBUG: Rendering label template with layout: $layoutType")
           
@@ -796,12 +801,10 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
           printerBuilder.actionPrintText(content).actionFeedLine(2)
         }
 
-        // Build document with printable area setting for labels
+        // Build document - DO NOT use settingPrintableArea() as it permanently changes printer memory!
+        // We already calculated targetDots based on printableAreaMm for our rendering
         val documentBuilder = DocumentBuilder()
-        if (labelPrinter && hasLabelFields && printableAreaMm > 0) {
-          documentBuilder.settingPrintableArea(printableAreaMm)
-          println("DEBUG: Set document printable area to ${printableAreaMm}mm")
-        }
+        // Let the printer use its own configured printable area
         documentBuilder.addPrinter(printerBuilder.actionCut(CutType.Partial))
         
         builder.addDocument(documentBuilder)
@@ -1016,7 +1019,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     return try {
       val modelStr = printer?.information?.model?.toString() ?: return false
       val ms = modelStr.lowercase()
-      val isLabel = ms.contains("label") || ms.contains("tsp100iv_sk") || ms.contains("tsp100sk") || ms.contains("_sk") || ms.contains("mpop")
+      val isLabel = ms.contains("label") || ms.contains("tsp100iv_sk") || ms.contains("tsp100sk") || ms.contains("_sk") || ms.contains("mpop") || ms.contains("tsp100iv")
       println("DEBUG: isLabelPrinter check for '$ms': $isLabel")
       isLabel
     } catch (_: Exception) { false }

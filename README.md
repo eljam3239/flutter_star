@@ -18,7 +18,10 @@ Switch the printer off and turn back on if plugging a usb into the printer doesn
 
 Same goes for using bluetooth after it was used for wired: unplug the wired device, power the printer off and on again, then you'll be able to connect via Bluetooth. The tsp100ivsk could print over Bluetooth and usb without a power cycle when connected to the android tablet. The mC-Label2 seems to allow connecting to Bluetooth after a wired connection without a power cycle (on iOS), provided the cable is unplugged and the device is paired in the tablet's bluetooth settings. On Android, the wired connect tap times out if you attempt to do so immediately following pairing the mc2 in app.
 
-iOS receipt and label printing work on all models in all interfaces. No refactoring of reciept printing done for 38 mm paper on tsp100ivsk, and no label prints being done for the tsp100iiiw.
+iOS receipt and label printing work on all models in all interfaces. No refactoring of reciept printing done for 38 mm paper on tsp100ivsk, and no label prints being done for the tsp100iiiw. mPop receipt slightly too narrow.
+Android same thing.
+
+
 
 
 TODO: 

@@ -412,7 +412,7 @@ class _MyHomePageState extends State<MyHomePage> {
       print('DEBUG: Creating label print job for $_labelQuantity label(s)...');
       
       // Calculate printable area based on paper width
-      // 38mm -> 34.5mm printable, 58mm -> 51mm printable, 80mm -> 72mm printable
+      // 38mm -> 34.5mm printable, 58mm -> 48mm printable, 80mm -> 72mm printable
       double printableAreaMm;
       String layoutType;
       
@@ -420,12 +420,14 @@ class _MyHomePageState extends State<MyHomePage> {
         printableAreaMm = 34.5;
         layoutType = 'vertical_centered';  // Everything vertical and centered for narrow labels
       } else if (_labelPaperWidthMm == 58) {
-        printableAreaMm = 51.0;
+        printableAreaMm = 48.0;
         layoutType = 'mixed';  // Mixed layout with some horizontal elements
       } else {
         printableAreaMm = 72.0;
         layoutType = 'horizontal';  // Full horizontal layout for wide labels
       }
+      
+      print('DEBUG: _labelPaperWidthMm = $_labelPaperWidthMm, printableAreaMm = $printableAreaMm');
       
       // All centered content for narrow labels
       final productName = _itemName.isNotEmpty ? _itemName : 'PRODUCT NAME';
@@ -561,6 +563,19 @@ class _MyHomePageState extends State<MyHomePage> {
     
     try {
       print('DEBUG: Creating print job...');
+      
+      // Calculate printable area for receipts too (same logic as labels)
+      double printableAreaMm;
+      if (_labelPaperWidthMm == 38) {
+        printableAreaMm = 34.5;
+      } else if (_labelPaperWidthMm == 58) {
+        printableAreaMm = 48.0;
+      } else {
+        printableAreaMm = 72.0;
+      }
+      
+      print('DEBUG: Receipt - _labelPaperWidthMm = $_labelPaperWidthMm, printableAreaMm = $printableAreaMm');
+      
       // Build structured layout settings to be interpreted by native layers
       final layoutSettings = {
         'layout': {
@@ -578,6 +593,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 'receiptNum': _receiptNum,
                 'lane': _lane,
                 'footer': _footer,
+                'printableAreaMm': printableAreaMm,  // Add printable area for receipts too
               },
           'items': [
             {
@@ -1149,7 +1165,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       _labelPaperWidthMm == 38 
                           ? 'Printable area: 34.5mm (vertical layout, all centered)'
                           : _labelPaperWidthMm == 58
-                              ? 'Printable area: 51mm (mixed layout)'
+                              ? 'Printable area: 48mm (mixed layout)'
                               : 'Printable area: 72mm (horizontal layout)',
                       style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey),
                     ),

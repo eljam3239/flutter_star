@@ -423,8 +423,9 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
         val color = (details?.get("color") as? String)?.trim().orEmpty()
         val labelPrice = (details?.get("price") as? String)?.trim().orEmpty()
         val layoutType = (details?.get("layoutType") as? String)?.trim().orEmpty()
-        val printableAreaMm = (details?.get("printableAreaMm") as? Number)?.toDouble() ?: 0.0
+        val printableAreaMm = (details?.get("printableAreaMm") as? Number)?.toDouble() ?: 51.0  // Default to 58mm paper
         
+        println("DEBUG: Received printableAreaMm from Dart: ${details?.get("printableAreaMm")}, using: $printableAreaMm")
         println("DEBUG: Barcode settings from Dart - content=$barcodeContent, height=$barcodeHeight, symbology=$barcodeSymbology")
         println("DEBUG: Label layout - type=$layoutType, printableArea=${printableAreaMm}mm")
         println("DEBUG: Label fields - category='$category', size='$size', color='$color', price='$labelPrice'")
@@ -469,7 +470,10 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     fullWidthMm = currentPrintableWidthMm()
     println("DEBUG: Using auto-detected width: ${fullWidthMm}mm = $targetDots dots")
   }
-  val cpl = currentColumnsPerLine()
+  
+  // Use targetDots for text width calculation in label mode (matching iOS logic)
+  val cpl = if (useLabelMode) (targetDots / 12.0).toInt() else currentColumnsPerLine()
+  println("DEBUG: Text width calculation - useLabelMode=$useLabelMode, cpl=$cpl (targetDots=$targetDots)")
 
         // 1) Header: print as bold text instead of image for labels
         if (headerTitle.isNotEmpty()) {
@@ -553,9 +557,11 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   // 2.6) Details block (we will later inject items between ruled lines)
         val hasAnyDetails = listOf(locationText, dateText, timeText, cashier, receiptNum, lane, footer).any { it.isNotEmpty() }
         if (hasAnyDetails) {
-          if (graphicsOnly || useLabelMode) {
-            // Force label printers to a 576px canvas to ensure full-width usage like iOS
-            val detailsCanvas = if (useLabelMode) 576 else targetDots
+          // Only use image rendering for graphics-only printers (like iOS)
+          // Label printers (mPOP, TSP100SK) support native text commands
+          if (graphicsOnly) {
+            // Force label printers to use targetDots for proper width like iOS
+            val detailsCanvas = targetDots
             val detailsBmp = createDetailsBitmap(locationText, dateText, timeText, cashier, receiptNum, lane, footer, items, detailsCanvas)
             if (detailsBmp != null) {
               printerBuilder.actionPrintImage(ImageParameter(detailsBmp, detailsCanvas)).actionFeedLine(1)
@@ -584,6 +590,7 @@ class StarPrinterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
             printerBuilder.actionPrintText("$right2\n", rightParam)
             // Gap then first ruled line
             printerBuilder.actionFeedLine(1)
+            println("DEBUG: Printing ruled line with fullWidthMm=$fullWidthMm")
             printerBuilder.actionPrintRuledLine(RuledLineParameter(fullWidthMm))
 
             // Inject item lines (text path only here). Each item: "Q x Name" left, price right.

@@ -574,7 +574,10 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 // Graphics-only detection
                 let graphicsOnly: Bool = {
                     if let model = self.printer?.information?.model {
-                        return model == .tsp100IIIW
+                        print("DEBUG: Printer model detected: \(model)")
+                        print("DEBUG: Raw model enum value: \(model.rawValue)")
+                        // TSP100III series printers (IIIW, IIIBI) are graphics-only
+                        return model == .tsp100IIIW || model.rawValue == 7  // 7 = tsp100IIIBI
                     }
                     return false
                 }()
@@ -684,7 +687,9 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                 // 2.6) Details block below the image/barcode
                 let items = (layout?["items"] as? [[String: Any]]) ?? []
                 let hasAnyDetails = !locationText.isEmpty || !dateText.isEmpty || !timeText.isEmpty || !cashier.isEmpty || !receiptNum.isEmpty || !lane.isEmpty || !footer.isEmpty
+                print("DEBUG: hasAnyDetails=\(hasAnyDetails), locationText='\(locationText)', dateText='\(dateText)', timeText='\(timeText)', cashier='\(cashier)', receiptNum='\(receiptNum)', lane='\(lane)', footer='\(footer)'")
                 if hasAnyDetails {
+                    print("DEBUG: Processing details section...")
                     // Only use image rendering for graphics-only printers (TSP100IIIW)
                     // Label printers (TSP100SK) support native text commands
                     if graphicsOnly {

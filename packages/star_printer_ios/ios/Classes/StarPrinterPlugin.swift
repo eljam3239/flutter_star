@@ -168,6 +168,8 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         
                         func manager(_ manager: any StarDeviceDiscoveryManager, didFind printer: StarPrinter) {
                             let identifier = printer.connectionSettings.identifier
+                            print("DEBUG: Full connection settings - interfaceType: \(printer.connectionSettings.interfaceType), identifier: '\(identifier)'")
+                            
                             let modelName: String
                             if let model = printer.information?.model {
                                 modelName = String(describing: model)

@@ -42,6 +42,10 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
     
     // Estimate characters per line for TextParameter widths
     private func currentColumnsPerLine() -> Int {
+        let modelStr = self.printer?.information?.model.description.lowercased() ?? ""
+        if modelStr.contains("tsp650") {
+            return 42  // TSP650II doesn't support .setWidth() so use conservative char count
+        }
         let dots = currentPrintableWidthDots()
         if dots >= 560 { return 48 }
         if dots >= 380 { return 32 }
@@ -728,51 +732,118 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                         let left1 = "\(dateText) \(timeText)"
                         let right1 = cashier.isEmpty ? "" : "Cashier: \(cashier)"
                         let totalCPL = useLabelMode ? Int(Double(targetDots) / 12.0) : currentColumnsPerLine()  // Use targetDots for label mode
-                        let leftWidth = max(8, totalCPL / 2)
-                        let rightWidth = max(8, totalCPL - leftWidth)
-                        let leftParam = StarXpandCommand.Printer.TextParameter().setWidth(leftWidth)
-                        let rightParam = StarXpandCommand.Printer.TextParameter().setWidth(rightWidth, StarXpandCommand.Printer.TextWidthParameter().setAlignment(.right))
-                        _ = printerBuilder.actionPrintText(left1, leftParam)
-                        _ = printerBuilder.actionPrintText("\(right1)\n", rightParam)
-                        // Line: left receipt no, right lane
-                        let left2 = receiptNum.isEmpty ? "" : "Receipt No: \(receiptNum)"
-                        let right2 = lane.isEmpty ? "" : "Lane: \(lane)"
-                        _ = printerBuilder.actionPrintText(left2, leftParam)
-                        _ = printerBuilder.actionPrintText("\(right2)\n", rightParam)
-                        // Gap then first ruled line
-                        _ = printerBuilder.actionFeedLine(1)
-                        _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
-
-                        // Item lines inserted here (left description, right price) before second ruled line
-                        if !items.isEmpty {
-                            let leftItemsWidth = max(8, Int(Double(totalCPL) * 0.625))
-                            let rightItemsWidth = max(6, totalCPL - leftItemsWidth)
-                            let leftParamItems = StarXpandCommand.Printer.TextParameter().setWidth(leftItemsWidth)
-                            let rightParamItems = StarXpandCommand.Printer.TextParameter().setWidth(rightItemsWidth, StarXpandCommand.Printer.TextWidthParameter().setAlignment(.right))
+                        
+                        // Check if this is TSP650II which doesn't support .setWidth()
+                        let modelStr = self.printer?.information?.model.description.lowercased() ?? ""
+                        if modelStr.contains("tsp650") {
+                            print("DEBUG: Using manual padding for TSP650II (42 chars per line)")
+                            // Manual space padding for TSP650II
+                            if !left1.isEmpty && !right1.isEmpty {
+                                let totalLen = left1.count + right1.count
+                                let spacesNeeded = max(1, 42 - totalLen)
+                                let paddedLine = left1 + String(repeating: " ", count: spacesNeeded) + right1
+                                _ = printerBuilder.actionPrintText("\(paddedLine)\n")
+                            } else if !left1.isEmpty {
+                                _ = printerBuilder.actionPrintText("\(left1)\n")
+                            } else if !right1.isEmpty {
+                                let rightPadding = String(repeating: " ", count: max(0, 42 - right1.count))
+                                _ = printerBuilder.actionPrintText("\(rightPadding)\(right1)\n")
+                            }
+                            
+                            let left2 = receiptNum.isEmpty ? "" : "Receipt No: \(receiptNum)"
+                            let right2 = lane.isEmpty ? "" : "Lane: \(lane)"
+                            if !left2.isEmpty && !right2.isEmpty {
+                                let totalLen = left2.count + right2.count
+                                let spacesNeeded = max(1, 42 - totalLen)
+                                let paddedLine = left2 + String(repeating: " ", count: spacesNeeded) + right2
+                                _ = printerBuilder.actionPrintText("\(paddedLine)\n")
+                            } else if !left2.isEmpty {
+                                _ = printerBuilder.actionPrintText("\(left2)\n")
+                            } else if !right2.isEmpty {
+                                let rightPadding = String(repeating: " ", count: max(0, 42 - right2.count))
+                                _ = printerBuilder.actionPrintText("\(rightPadding)\(right2)\n")
+                            }
+                            
+                            // Gap then first ruled line
+                            _ = printerBuilder.actionFeedLine(1)
+                            _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
+                            
+                            // Item lines with manual padding
                             for item in items {
-                                let qty = (item["quantity"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
+                                let quantity = (item["quantity"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
                                 let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Item"
-                                let priceRaw = (item["price"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "0.00"
-                                let repeatRaw = (item["repeat"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
-                                let repeatCount = Int(repeatRaw) ?? 1
-                                let leftText = "\(qty) x \(name)"
-                                let rightText = "$\(priceRaw)"
-                                for _ in 0..<max(1, min(repeatCount, 200)) {
-                                    _ = printerBuilder.actionPrintText(leftText, leftParamItems)
-                                    _ = printerBuilder.actionPrintText("\(rightText)\n", rightParamItems)
+                                let price = (item["price"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "0.00"
+                                let repeatString = (item["repeat"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
+                                let repeatCount = max(1, min(200, Int(repeatString) ?? 1))
+                                let leftText = "\(quantity) x \(name)"
+                                let rightText = "$\(price)"
+                                
+                                for _ in 0..<repeatCount {
+                                    let totalLen = leftText.count + rightText.count
+                                    let spacesNeeded = max(1, 42 - totalLen)
+                                    let paddedLine = leftText + String(repeating: " ", count: spacesNeeded) + rightText
+                                    _ = printerBuilder.actionPrintText("\(paddedLine)\n")
                                 }
                             }
-                        }
+                            
+                            // Second ruled line after items
+                            _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
+                            _ = printerBuilder.actionFeedLine(1)
+                            // Footer centered
+                            if !footer.isEmpty {
+                                _ = printerBuilder
+                                    .styleAlignment(.center)
+                                    .actionPrintText("\(footer)\n")
+                                    .styleAlignment(.left)
+                            }
+                        } else {
+                            // Use normal TextParameter approach for other printers (that support .setWidth())
+                            let leftWidth = max(8, totalCPL / 2)
+                            let rightWidth = max(8, totalCPL - leftWidth)
+                            let leftParam = StarXpandCommand.Printer.TextParameter().setWidth(leftWidth)
+                            let rightParam = StarXpandCommand.Printer.TextParameter().setWidth(rightWidth, StarXpandCommand.Printer.TextWidthParameter().setAlignment(.right))
+                            _ = printerBuilder.actionPrintText(left1, leftParam)
+                            _ = printerBuilder.actionPrintText("\(right1)\n", rightParam)
+                            // Line: left receipt no, right lane
+                            let left2 = receiptNum.isEmpty ? "" : "Receipt No: \(receiptNum)"
+                            let right2 = lane.isEmpty ? "" : "Lane: \(lane)"
+                            _ = printerBuilder.actionPrintText(left2, leftParam)
+                            _ = printerBuilder.actionPrintText("\(right2)\n", rightParam)
+                            // Gap then first ruled line
+                            _ = printerBuilder.actionFeedLine(1)
+                            _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
 
-                        // Second ruled line after items
-                        _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
-                        _ = printerBuilder.actionFeedLine(1)
-                        // Footer (centered) if present
-                        if !footer.isEmpty {
-                            _ = printerBuilder
-                                .styleAlignment(.center)
-                                .actionPrintText("\(footer)\n")
-                                .styleAlignment(.left)
+                            // Item lines inserted here (left description, right price) before second ruled line
+                            if !items.isEmpty {
+                                let leftItemsWidth = max(8, Int(Double(totalCPL) * 0.625))
+                                let rightItemsWidth = max(6, totalCPL - leftItemsWidth)
+                                let leftParamItems = StarXpandCommand.Printer.TextParameter().setWidth(leftItemsWidth)
+                                let rightParamItems = StarXpandCommand.Printer.TextParameter().setWidth(rightItemsWidth, StarXpandCommand.Printer.TextWidthParameter().setAlignment(.right))
+                                for item in items {
+                                    let qty = (item["quantity"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
+                                    let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Item"
+                                    let priceRaw = (item["price"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "0.00"
+                                    let repeatRaw = (item["repeat"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
+                                    let repeatCount = Int(repeatRaw) ?? 1
+                                    let leftText = "\(qty) x \(name)"
+                                    let rightText = "$\(priceRaw)"
+                                    for _ in 0..<max(1, min(repeatCount, 200)) {
+                                        _ = printerBuilder.actionPrintText(leftText, leftParamItems)
+                                        _ = printerBuilder.actionPrintText("\(rightText)\n", rightParamItems)
+                                    }
+                                }
+                            }
+
+                            // Second ruled line after items
+                            _ = printerBuilder.actionPrintRuledLine(StarXpandCommand.Printer.RuledLineParameter(width: fullWidthMm))
+                            _ = printerBuilder.actionFeedLine(1)
+                            // Footer (centered) if present
+                            if !footer.isEmpty {
+                                _ = printerBuilder
+                                    .styleAlignment(.center)
+                                    .actionPrintText("\(footer)\n")
+                                    .styleAlignment(.left)
+                            }
                         }
                     }
                 }

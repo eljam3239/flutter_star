@@ -646,11 +646,10 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
                             .styleAlignment(.left)
                         if headerSpacing > 0 { _ = printerBuilder.actionFeedLine(headerSpacing) }
                     } else {
-                        // For receipts, keep using image
-                        if let headerImageRaw = createTextImage(text: headerTitle, fontSize: headerFontSize, imageWidth: CGFloat(targetDots)),
-                           let headerFlat = flattenImage(headerImageRaw, targetWidth: targetDots) {
-                            print("Printing header image at width=\(targetDots) (flattened UIImage)")
-                            let param = StarXpandCommand.Printer.ImageParameter(image: headerFlat, width: targetDots)
+                        // For receipts, use dedicated header image function (matching Android approach)
+                        if let headerImage = createHeaderImage(text: headerTitle, fontSize: headerFontSize, imageWidth: CGFloat(targetDots)) {
+                            print("Printing header image at width=\(targetDots) (dedicated header function)")
+                            let param = StarXpandCommand.Printer.ImageParameter(image: headerImage, width: targetDots)
                             _ = printerBuilder
                                 .styleAlignment(.center)
                                 .actionPrintImage(param)
@@ -1368,7 +1367,7 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
             context: nil
         ).size
 
-        let imageHeight = textSize.height + 10  // Minimal padding - just 5px top and bottom
+        let imageHeight = textSize.height + 4  // Minimal padding - just 2px top and bottom
         let imageSize = CGSize(width: imageWidth, height: imageHeight)
 
         UIGraphicsBeginImageContextWithOptions(imageSize, true, 1.0)
@@ -1379,13 +1378,65 @@ public class StarPrinterPlugin: NSObject, FlutterPlugin {
         context.setFillColor(backgroundColor.cgColor)
         context.fill(CGRect(origin: .zero, size: imageSize))
 
-        let textRect = CGRect(x: 5, y: 5, width: imageWidth - 10, height: textSize.height)  // Just 5px padding all around
+        let textRect = CGRect(x: 2, y: 2, width: imageWidth - 4, height: textSize.height)  // Just 2px padding all around
         filteredText.draw(in: textRect, withAttributes: textAttributes)
 
         guard let image = UIGraphicsGetImageFromCurrentImageContext() else {
             UIGraphicsEndImageContext()
             return nil
         }
+        UIGraphicsEndImageContext()
+        return image
+    }
+
+    // Helper: create header image matching Android's approach exactly
+    private func createHeaderImage(text: String, fontSize: CGFloat, imageWidth: CGFloat) -> UIImage? {
+        let width = max(8, min(Int(imageWidth), 576))
+        let padding: CGFloat = 20  // Match Android's 20px padding
+        let contentWidth = CGFloat(width) - (padding * 2)
+        
+        let font = UIFont.systemFont(ofSize: fontSize)
+        let textColor = UIColor.black
+        let backgroundColor = UIColor.white
+        
+        // Center alignment matching Android
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        
+        let textAttributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
+        ]
+        
+        // Calculate text size within content width (matching Android's approach)
+        let textSize = text.boundingRect(
+            with: CGSize(width: contentWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: textAttributes,
+            context: nil
+        ).size
+        
+        // Height = layout height + padding*2, minimum 100 (matching Android)
+        let height = max(100, Int(ceil(textSize.height)) + Int(padding * 2))
+        let imageSize = CGSize(width: width, height: height)
+        
+        UIGraphicsBeginImageContextWithOptions(imageSize, true, 1.0)
+        guard let context = UIGraphicsGetCurrentContext() else {
+            UIGraphicsEndImageContext()
+            return nil
+        }
+        
+        // Fill with white background
+        context.setFillColor(backgroundColor.cgColor)
+        context.fill(CGRect(origin: .zero, size: imageSize))
+        
+        // Draw text in center area with padding (matching Android's translate approach)
+        let textRect = CGRect(x: padding, y: padding, width: contentWidth, height: textSize.height)
+        text.draw(in: textRect, withAttributes: textAttributes)
+        
+        let image = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         return image
     }
